@@ -4,9 +4,9 @@ import router from '@/router'
 import { ElMessage } from 'element-plus'
 
 const request = axios.create({
-    baseURL: '/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
     timeout: 5000
-})
+  })
 
 // 请求拦截器 - 添加token
 request.interceptors.request.use(
