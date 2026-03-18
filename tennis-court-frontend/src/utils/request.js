@@ -4,9 +4,11 @@ import router from '@/router'
 import { ElMessage } from 'element-plus'
 
 const request = axios.create({
+    // 优先走同源 /api（本地由 Vite proxy，Vercel 由 vercel.json rewrite 到 ECS）
+    // 若你后续改为后端 HTTPS + 域名直连，也可在 Vercel 配 VITE_API_BASE_URL 覆盖
     baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
     timeout: 5000
-  })
+})
 
 // 请求拦截器 - 添加token
 request.interceptors.request.use(
