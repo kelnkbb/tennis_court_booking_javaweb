@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tennis_court_booking.mapper.CourtMapper">
+
+    <insert id="addCourt" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO court (name, address, price, images, open_time, status, type)
+        VALUES (#{name}, #{address}, #{price}, #{images}, #{openTime}, #{status}, #{type})
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM court WHERE id = #{id}
+    </delete>
+
+    <select id="findAll" resultType="Court">
+        SELECT * FROM court
+    </select>
+
+    <select id="getCourt" resultType="com.tennis_court_booking.pojo.entity.Court">
+        SELECT * FROM court WHERE id = #{id}
+    </select>
+
+    <update id="updateCourt">
+        UPDATE court
+        SET
+            name = #{name},
+            address = #{address},
+            price = #{price},
+            images = #{images},
+            open_time = #{openTime},
+            status = #{status},
+            type = #{type}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

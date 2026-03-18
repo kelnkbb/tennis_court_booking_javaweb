@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tennis_court_booking.mapper.BookingMapper">
+
+    <!-- 查询所有预约（关联场地和用户） -->
+    <select id="findAll" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+            b.*,
+            c.name as courtName,
+            u.username as userName,
+            u.phone as userPhone,
+            CASE
+                WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.status = 0 THEN '已取消'
+                WHEN b.status = 1 THEN '待付款'
+                WHEN b.status = 2 THEN '已付款'
+                WHEN b.status = 3 THEN '已完成'
+                WHEN b.status = 4 THEN '已过期'
+                ELSE '未知'
+                END as statusText
+        FROM booking b
+                 LEFT JOIN court c ON b.court_id = c.id
+                 LEFT JOIN user u ON b.user_id = u.id
+        ORDER BY b.booking_date DESC, b.start_time DESC, b.create_time DESC
+    </select>
+
+    <!-- 根据ID查询预约 -->
+    <select id="findById" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+            b.*,
+            c.name as courtName,
+            u.username as userName,
+            u.phone as userPhone,
+            CASE
+                WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.status = 0 THEN '已取消'
+                WHEN b.status = 1 THEN '待付款'
+                WHEN b.status = 2 THEN '已付款'
+                WHEN b.status = 3 THEN '已完成'
+                WHEN b.status = 4 THEN '已过期'
+                ELSE '未知'
+                END as statusText
+        FROM booking b
+                 LEFT JOIN court c ON b.court_id = c.id
+                 LEFT JOIN user u ON b.user_id = u.id
+        WHERE b.id = #{id}
+    </select>
+
+    <!-- 根据预约单号查询 -->
+    <select id="findByBookingNo" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+            b.*,
+            c.name as courtName,
+            u.username as userName,
+            u.phone as userPhone,
+            CASE
+                WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.status = 0 THEN '已取消'
+                WHEN b.status = 1 THEN '待付款'
+                WHEN b.status = 2 THEN '已付款'
+                WHEN b.status = 3 THEN '已完成'
+                WHEN b.status = 4 THEN '已过期'
+                ELSE '未知'
+                END as statusText
+        FROM booking b
+                 LEFT JOIN court c ON b.court_id = c.id
+                 LEFT JOIN user u ON b.user_id = u.id
+        WHERE b.booking_no = #{bookingNo}
+    </select>
+
+    <!-- 条件查询预约 -->
+    <select id="findByCondition" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+        b.*,
+        c.name as courtName,
+        u.username as userName,
+        u.phone as userPhone,
+        CASE
+        WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+        WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+        WHEN b.status = 0 THEN '已取消'
+        WHEN b.status = 1 THEN '待付款'
+        WHEN b.status = 2 THEN '已付款'
+        WHEN b.status = 3 THEN '已完成'
+        WHEN b.status = 4 THEN '已过期'
+        ELSE '未知'
+        END as statusText
+        FROM booking b
+        LEFT JOIN court c ON b.court_id = c.id
+        LEFT JOIN user u ON b.user_id = u.id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (b.booking_no LIKE CONCAT('%', #{keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{keyword}, '%')
+                OR u.phone LIKE CONCAT('%', #{keyword}, '%')
+                OR b.contact_name LIKE CONCAT('%', #{keyword}, '%')
+                OR b.contact_phone LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="courtId != null">
+                AND b.court_id = #{courtId}
+            </if>
+            <if test="userId != null">
+                AND b.user_id = #{userId}
+            </if>
+            <if test="status != null">
+                AND b.status = #{status}
+            </if>
+            <if test="startDate != null">
+                AND b.booking_date >= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND b.booking_date &lt;= #{endDate}
+            </if>
+        </where>
+        ORDER BY b.booking_date DESC, b.start_time DESC, b.create_time DESC
+    </select>
+
+    <!-- 检查时间冲突 -->
+    <select id="checkTimeConflict" resultType="int">
+        SELECT COUNT(*)
+        FROM booking
+        WHERE court_id = #{courtId}
+        AND booking_date = #{bookingDate}
+        AND status IN (1, 2, 3)  <!-- 待付款、已付款、完成状态的预约才视为冲突 -->
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+        AND (
+        (start_time &lt; #{endTime} AND end_time > #{startTime})
+        )
+    </select>
+
+    <!-- 新增预约 -->
+    <insert id="addBooking" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO booking (
+            booking_no, court_id, user_id, booking_date,
+            start_time, end_time, duration, unit_price,
+            total_amount, contact_name, contact_phone,
+            remark, status, cancel_request_status, payment_channel, pay_time,
+            create_time, update_time
+        ) VALUES (
+                     #{bookingNo}, #{courtId}, #{userId}, #{bookingDate},
+                     #{startTime}, #{endTime}, #{duration}, #{unitPrice},
+                     #{totalAmount}, #{contactName}, #{contactPhone},
+                     #{remark}, #{status},
+                     IFNULL(#{cancelRequestStatus}, 0), #{paymentChannel}, #{payTime},
+                     #{createTime}, #{updateTime}
+                 )
+    </insert>
+
+    <!-- 更新预约 -->
+    <update id="updateBooking">
+        UPDATE booking
+        SET
+            court_id = #{courtId},
+            booking_date = #{bookingDate},
+            start_time = #{startTime},
+            end_time = #{endTime},
+            duration = #{duration},
+            unit_price = #{unitPrice},
+            total_amount = #{totalAmount},
+            contact_name = #{contactName},
+            contact_phone = #{contactPhone},
+            remark = #{remark},
+            status = #{status},
+            cancel_request_status = #{cancelRequestStatus},
+            payment_channel = #{paymentChannel},
+            pay_time = #{payTime},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <update id="userRequestCancelBooking">
+        UPDATE booking
+        SET cancel_request_status = 1, update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 1
+          AND cancel_request_status IN (0, 2)
+    </update>
+
+    <update id="adminApproveCancelBooking">
+        UPDATE booking
+        SET status = 0, cancel_request_status = 0, update_time = NOW()
+        WHERE id = #{id} AND cancel_request_status = 1
+    </update>
+
+    <update id="adminRejectCancelBooking">
+        UPDATE booking
+        SET cancel_request_status = 2, update_time = NOW()
+        WHERE id = #{id} AND cancel_request_status = 1
+    </update>
+
+    <update id="userPayBooking">
+        UPDATE booking
+        SET status = 2,
+            payment_channel = #{channel},
+            pay_time = NOW(),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 1
+          AND cancel_request_status IN (0, 2)
+    </update>
+
+    <select id="findBookingsPendingCancel" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+            b.*,
+            c.name as courtName,
+            u.username as userName,
+            u.phone as userPhone,
+            CASE
+                WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.status = 0 THEN '已取消'
+                WHEN b.status = 1 THEN '待付款'
+                WHEN b.status = 2 THEN '已付款'
+                WHEN b.status = 3 THEN '已完成'
+                WHEN b.status = 4 THEN '已过期'
+                ELSE '未知'
+            END as statusText
+        FROM booking b
+        LEFT JOIN court c ON b.court_id = c.id
+        LEFT JOIN user u ON b.user_id = u.id
+        WHERE b.cancel_request_status = 1
+        ORDER BY b.update_time DESC
+    </select>
+
+    <!-- 更新状态 -->
+    <update id="updateStatus">
+        UPDATE booking
+        SET status = #{status}, update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除预约 -->
+    <delete id="deleteById">
+        DELETE FROM booking WHERE id = #{id}
+    </delete>
+
+    <!-- 批量删除 -->
+    <delete id="batchDelete">
+        DELETE FROM booking WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <!-- 获取今日预约数量 -->
+    <select id="getTodayBookingCount" resultType="int">
+        SELECT COUNT(*)
+        FROM booking
+        WHERE booking_date = CURDATE()
+          AND status IN (1, 2, 3)
+    </select>
+
+    <!-- 根据用户ID统计其预约总数 -->
+    <select id="getBookingCountByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM booking
+        WHERE user_id = #{userId}
+          AND status IN (1, 2, 3)
+    </select>
+
+    <select id="sumDurationForCourtDate" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(duration), 0)
+        FROM booking
+        WHERE court_id = #{courtId}
+          AND booking_date = #{bookingDate}
+          AND status IN (1, 2, 3)
+        <if test="excludeId != null">
+          AND id != #{excludeId}
+        </if>
+    </select>
+
+    <select id="findActiveTimeRangesForCourtDate" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT start_time AS startTime, end_time AS endTime
+        FROM booking
+        WHERE court_id = #{courtId}
+          AND booking_date = #{bookingDate}
+          AND status IN (1, 2, 3)
+        <if test="excludeId != null">
+          AND id != #{excludeId}
+        </if>
+    </select>
+
+    <!-- 获取场地预约统计 -->
+    <select id="getCourtBookingStats" resultType="com.tennis_court_booking.pojo.vo.CourtBookingStats">
+        SELECT
+        c.id as courtId,
+        c.name as courtName,
+        COUNT(b.id) as bookingCount,
+        COALESCE(SUM(b.duration), 0) as totalHours,
+        COALESCE(SUM(b.total_amount), 0) as totalAmount
+        FROM court c
+        LEFT JOIN booking b ON c.id = b.court_id
+        AND b.status IN (1, 2, 3)  <!-- 待付款、已付款、完成状态的预约才统计 -->
+        AND b.booking_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        GROUP BY c.id, c.name
+        ORDER BY bookingCount DESC
+    </select>
+
+
+
+</mapper>
