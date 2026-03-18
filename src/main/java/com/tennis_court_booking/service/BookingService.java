@@ -4,7 +4,9 @@ package com.tennis_court_booking.service;
 import com.tennis_court_booking.pojo.entity.Booking;
 import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
+import com.tennis_court_booking.pojo.vo.CourtStatsVO;
 import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
+import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -83,6 +85,16 @@ public interface BookingService {
      * 获取场地预约统计
      */
     List<CourtBookingStats> getCourtBookingStats();
+
+    /**
+     * 管理员：按日期范围统计场地
+     */
+    List<CourtStatsVO> getCourtStats(LocalDate startDate, LocalDate endDate);
+
+    /**
+     * 管理员：按日期范围统计用户
+     */
+    List<UserBookingStatsVO> getUserBookingStats(LocalDate startDate, LocalDate endDate);
 
     /**
      * 生成预约单号

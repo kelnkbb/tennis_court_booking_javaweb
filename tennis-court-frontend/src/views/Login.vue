@@ -1,101 +1,163 @@
 <!-- src/views/Login.vue -->
 <template>
   <div class="login-container">
-    <div class="login-card">
-      <div class="login-header">
-        <h2>网球场地预约管理系统</h2>
-        <p>{{ isLogin ? '登录' : '注册' }}</p>
+    <div class="bg-blobs" aria-hidden="true">
+      <span class="blob blob-1" />
+      <span class="blob blob-2" />
+      <span class="blob blob-3" />
+    </div>
+
+    <div class="shell">
+      <div class="brand-panel">
+        <div class="brand">
+          <div class="brand-badge">Court Booking</div>
+          <h1 class="brand-title">运动场馆预约管理系统</h1>
+          <p class="brand-subtitle">
+            更高效的场地管理与预约体验：管理员一站式运营，您只需轻松选时下单。
+          </p>
+        </div>
+
+        <div class="feature-list">
+          <div class="feature">
+            <div class="dot" />
+            <div class="feature-text">
+              <div class="feature-title">预约规则</div>
+              <div class="feature-desc">每日7点开放场地，提前选好时段，静候佳音</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="dot" />
+            <div class="feature-text">
+              <div class="feature-title">订单与支付</div>
+              <div class="feature-desc">下单流程清晰可视，让您安心</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="dot" />
+            <div class="feature-text">
+              <div class="feature-title">一键预订</div>
+              <div class="feature-desc">拒绝繁琐流程，预定场地仅需一键</div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <el-form
+      <div class="login-card">
+        <div class="login-header">
+          <h2>{{ isLogin ? '欢迎回来' : '创建账号' }}</h2>
+          <p>{{ isLogin ? '登录后继续管理与预约' : '填写信息完成注册' }}</p>
+        </div>
+
+        <div class="mode-tabs">
+          <button
+            class="tab"
+            :class="{ active: isLogin }"
+            type="button"
+            @click="isLogin || toggleMode()"
+          >
+            登录
+          </button>
+          <button
+            class="tab"
+            :class="{ active: !isLogin }"
+            type="button"
+            @click="!isLogin || toggleMode()"
+          >
+            注册
+          </button>
+        </div>
+
+        <el-form
           ref="formRef"
           :model="formData"
           :rules="rules"
           label-width="0"
           class="login-form"
-      >
-        <!-- 用户名 -->
-        <el-form-item prop="username">
-          <el-input
+        >
+          <el-form-item prop="username">
+            <el-input
               v-model="formData.username"
               placeholder="用户名"
               :prefix-icon="User"
               size="large"
-          />
-        </el-form-item>
+              autocomplete="username"
+            />
+          </el-form-item>
 
-        <!-- 密码 -->
-        <el-form-item prop="password">
-          <el-input
+          <el-form-item prop="password">
+            <el-input
               v-model="formData.password"
               type="password"
               placeholder="密码"
               :prefix-icon="Lock"
               size="large"
               show-password
-          />
-        </el-form-item>
+              autocomplete="current-password"
+            />
+          </el-form-item>
 
-        <!-- 确认密码（注册时显示） -->
-        <el-form-item v-if="!isLogin" prop="confirmPassword">
-          <el-input
+          <el-form-item v-if="!isLogin" prop="confirmPassword">
+            <el-input
               v-model="formData.confirmPassword"
               type="password"
               placeholder="确认密码"
               :prefix-icon="Lock"
               size="large"
               show-password
-          />
-        </el-form-item>
+              autocomplete="new-password"
+            />
+          </el-form-item>
 
-        <!-- 真实姓名（注册时显示） -->
-        <el-form-item v-if="!isLogin" prop="realName">
-          <el-input
+          <el-form-item v-if="!isLogin" prop="realName">
+            <el-input
               v-model="formData.realName"
               placeholder="真实姓名"
               :prefix-icon="User"
               size="large"
-          />
-        </el-form-item>
+              autocomplete="name"
+            />
+          </el-form-item>
 
-        <!-- 手机号（注册时显示） -->
-        <el-form-item v-if="!isLogin" prop="phone">
-          <el-input
+          <el-form-item v-if="!isLogin" prop="phone">
+            <el-input
               v-model="formData.phone"
               placeholder="手机号"
               :prefix-icon="Iphone"
               size="large"
-          />
-        </el-form-item>
+              autocomplete="tel"
+            />
+          </el-form-item>
 
-        <!-- 邮箱（注册时显示） -->
-        <el-form-item v-if="!isLogin" prop="email">
-          <el-input
+          <el-form-item v-if="!isLogin" prop="email">
+            <el-input
               v-model="formData.email"
               placeholder="邮箱"
               :prefix-icon="Message"
               size="large"
-          />
-        </el-form-item>
+              autocomplete="email"
+            />
+          </el-form-item>
 
-        <el-form-item>
-          <el-button
+          <el-form-item>
+            <el-button
               type="primary"
               :loading="loading"
               @click="handleSubmit"
               size="large"
               class="submit-btn"
-          >
-            {{ isLogin ? '登录' : '注册' }}
-          </el-button>
-        </el-form-item>
+            >
+              {{ isLogin ? '登录' : '注册' }}
+            </el-button>
+          </el-form-item>
 
-        <div class="form-footer">
-          <el-link type="primary" @click="toggleMode">
-            {{ isLogin ? '没有账号？立即注册' : '已有账号？立即登录' }}
-          </el-link>
-        </div>
-      </el-form>
+          <div class="form-footer">
+            <el-link type="primary" @click="toggleMode">
+              {{ isLogin ? '没有账号？立即注册' : '已有账号？立即登录' }}
+            </el-link>
+          </div>
+        </el-form>
+      </div>
     </div>
   </div>
 </template>
@@ -293,5 +355,236 @@ const handleSubmit = async () => {
 
 :deep(.el-input__prefix) {
   margin-right: 8px;
+}
+/* ====== 新版视觉增强（追加覆盖旧样式） ====== */
+.login-container {
+  background:
+    radial-gradient(1200px 800px at 10% 10%, rgba(102, 126, 234, 0.45), transparent 55%),
+    radial-gradient(900px 600px at 90% 20%, rgba(118, 75, 162, 0.40), transparent 55%),
+    radial-gradient(900px 700px at 50% 90%, rgba(16, 185, 129, 0.18), transparent 55%),
+    linear-gradient(135deg, #0b1220 0%, #141a2e 55%, #0b1220 100%);
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.bg-blobs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  filter: blur(32px);
+}
+
+.blob {
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(102, 126, 234, 0.95), rgba(102, 126, 234, 0) 65%);
+  animation: float 10s ease-in-out infinite;
+}
+
+.blob-1 {
+  left: -180px;
+  top: -180px;
+}
+
+.blob-2 {
+  right: -220px;
+  top: 40px;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle at 30% 30%, rgba(118, 75, 162, 0.90), rgba(118, 75, 162, 0) 65%);
+  animation-duration: 12s;
+}
+
+.blob-3 {
+  left: 15%;
+  bottom: -260px;
+  width: 760px;
+  height: 760px;
+  background: radial-gradient(circle at 30% 30%, rgba(16, 185, 129, 0.35), rgba(16, 185, 129, 0) 65%);
+  animation-duration: 14s;
+}
+
+.shell {
+  position: relative;
+  width: min(1000px, 100%);
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+  z-index: 1;
+}
+
+.brand-panel {
+  border-radius: 16px;
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px);
+  color: rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.brand-title {
+  margin: 14px 0 8px;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.brand-subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.feature-list {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.feature {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 1), rgba(118, 75, 162, 1));
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
+}
+
+.feature-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.feature-desc {
+  margin-top: 2px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.brand-footer {
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.muted {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.60);
+}
+
+.login-card {
+  width: auto;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 16px;
+  padding: 26px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.login-header {
+  margin-bottom: 14px;
+}
+
+.login-header h2 {
+  margin-bottom: 6px;
+}
+
+.login-header p {
+  margin: 0;
+}
+
+.login-form {
+  margin-top: 14px;
+}
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: rgba(17, 24, 39, 0.06);
+  border-radius: 12px;
+  padding: 6px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  height: 38px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.70);
+  transition: all 160ms ease;
+}
+
+.tab.active {
+  background: white;
+  color: rgba(17, 24, 39, 0.95);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.12);
+}
+
+.submit-btn {
+  border-radius: 10px;
+  box-shadow: 0 10px 22px rgba(102, 126, 234, 0.25);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 60%, #5b7cfa 100%);
+}
+
+:deep(.el-input__wrapper) {
+  padding: 6px 12px;
+  border-radius: 10px;
+}
+
+@keyframes float {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, 16px, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .brand-panel {
+    display: none;
+  }
 }
 </style>

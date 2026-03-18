@@ -304,6 +304,58 @@
         ORDER BY bookingCount DESC
     </select>
 
+    <!-- 管理员：按日期范围统计场地 -->
+    <select id="getCourtStats" resultType="com.tennis_court_booking.pojo.vo.CourtStatsVO">
+        SELECT
+            c.id AS courtId,
+            c.name AS courtName,
+            COUNT(b.id) AS bookingCount,
+            COALESCE(SUM(b.duration), 0) AS totalHours,
+            COALESCE(SUM(b.total_amount), 0) AS totalAmount,
+            COALESCE(SUM(CASE WHEN b.status IN (2, 3) THEN b.total_amount ELSE 0 END), 0) AS paidAmount,
+            COALESCE(SUM(CASE WHEN b.status IN (2, 3) THEN 1 ELSE 0 END), 0) AS paidCount
+        FROM court c
+        LEFT JOIN booking b
+            ON c.id = b.court_id
+            AND b.status IN (1, 2, 3, 0)
+            <if test="startDate != null">
+                AND b.booking_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND b.booking_date &lt;= #{endDate}
+            </if>
+        GROUP BY c.id, c.name
+        ORDER BY bookingCount DESC, paidAmount DESC
+    </select>
+
+    <!-- 管理员：按日期范围统计用户 -->
+    <select id="getUserBookingStats" resultType="com.tennis_court_booking.pojo.vo.UserBookingStatsVO">
+        SELECT
+            u.id AS userId,
+            u.username AS username,
+            u.real_name AS realName,
+            u.phone AS phone,
+            COUNT(b.id) AS bookingCount,
+            COALESCE(SUM(b.duration), 0) AS totalHours,
+            COALESCE(SUM(b.total_amount), 0) AS totalAmount,
+            COALESCE(SUM(CASE WHEN b.status IN (2, 3) THEN 1 ELSE 0 END), 0) AS paidCount,
+            COALESCE(SUM(CASE WHEN b.status IN (2, 3) THEN b.total_amount ELSE 0 END), 0) AS paidAmount,
+            COALESCE(SUM(CASE WHEN b.status = 0 THEN 1 ELSE 0 END), 0) AS canceledCount
+        FROM user u
+        LEFT JOIN booking b
+            ON u.id = b.user_id
+            AND b.status IN (0, 1, 2, 3)
+            <if test="startDate != null">
+                AND b.booking_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND b.booking_date &lt;= #{endDate}
+            </if>
+        WHERE u.role = 1
+        GROUP BY u.id, u.username, u.real_name, u.phone
+        ORDER BY bookingCount DESC, paidAmount DESC
+    </select>
+
 
 
 </mapper>

@@ -4,6 +4,8 @@ package com.tennis_court_booking.mapper;
 import com.tennis_court_booking.pojo.entity.Booking;
 import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
+import com.tennis_court_booking.pojo.vo.CourtStatsVO;
+import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import java.time.LocalTime;
@@ -83,6 +85,18 @@ public interface BookingMapper {
      * 获取场地预约统计
      */
     List<CourtBookingStats> getCourtBookingStats();
+
+    /**
+     * 管理员：按日期范围统计场地（start/end 都可为空；为空则不加该边界）
+     */
+    List<CourtStatsVO> getCourtStats(@Param("startDate") LocalDate startDate,
+                                     @Param("endDate") LocalDate endDate);
+
+    /**
+     * 管理员：按日期范围统计用户（start/end 都可为空；为空则不加该边界）
+     */
+    List<UserBookingStatsVO> getUserBookingStats(@Param("startDate") LocalDate startDate,
+                                                 @Param("endDate") LocalDate endDate);
 
     /**
      * 根据用户ID统计其预约总数

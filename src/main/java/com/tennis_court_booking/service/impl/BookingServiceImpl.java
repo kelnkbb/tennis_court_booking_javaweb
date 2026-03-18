@@ -7,8 +7,10 @@ import com.tennis_court_booking.pojo.entity.Booking;
 import com.tennis_court_booking.pojo.entity.Court;
 import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
+import com.tennis_court_booking.pojo.vo.CourtStatsVO;
 import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
 import com.tennis_court_booking.pojo.vo.SlotOptionVO;
+import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import com.tennis_court_booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -217,6 +219,16 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public List<CourtBookingStats> getCourtBookingStats() {
         return bookingMapper.getCourtBookingStats();
+    }
+
+    @Override
+    public List<CourtStatsVO> getCourtStats(LocalDate startDate, LocalDate endDate) {
+        return bookingMapper.getCourtStats(startDate, endDate);
+    }
+
+    @Override
+    public List<UserBookingStatsVO> getUserBookingStats(LocalDate startDate, LocalDate endDate) {
+        return bookingMapper.getUserBookingStats(startDate, endDate);
     }
 
     @Override
