@@ -1,20 +1,17 @@
 spring:
-  datasource:
-    # 数据库地址通过环境变量 MYSQL_HOST 传入，并设置默认值
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/your_database_name?useSSL=false&serverTimezone=UTC&characterEncoding=utf-8
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:yourpassword}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    hibernate:
-      # 慎用 update，生产环境推荐使用 validate 或 none，防止误改表结构
-      ddl-auto: update 
-    show-sql: true
-    database-platform: org.hibernate.dialect.MySQL5InnoDBDialect
-    
+  application:
+    name: tennis-court-booking
+
+  # 统一强制 UTF-8，避免中文在反向代理/浏览器解析时出现乱码
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
   # 数据库配置
   datasource:
-    url: jdbc:mysql://localhost:3306/tennisbooking?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/tennisbooking?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: ch112211
