@@ -25,6 +25,14 @@ public class CourtController {
     }
 
     /**
+     * 热点场地 TopN（基于多级缓存层记录的访问热度 ZSet；新环境无数据时回退为列表前 N 条）。
+     */
+    @GetMapping("/courts/hot")
+    public Result<List<Court>> hotCourts(@RequestParam(defaultValue = "10") int topN) {
+        return Result.success(courtService.hotCourts(topN));
+    }
+
+    /**
      * 根据id删除场馆
      */
     @DeleteMapping("/courts/{id}")

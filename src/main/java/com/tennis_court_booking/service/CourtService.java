@@ -25,7 +25,17 @@ public interface CourtService {
     Court getCourt(Integer id);
 
     /**
+     * 根据关键词模糊筛选court（名称/地址）
+     */
+    List<Court> searchCourts(String keyword);
+
+    /**
      * 更新court
      */
     Court updateCourt(Court court);
+
+    /**
+     * 按访问热度返回 TopN 场地（依赖缓存层维护的 Redis ZSet；不足时回退为全量列表前 N 条）。
+     */
+    List<Court> hotCourts(int topN);
 }

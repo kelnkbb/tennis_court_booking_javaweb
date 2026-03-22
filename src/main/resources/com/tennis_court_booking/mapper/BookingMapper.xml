@@ -14,6 +14,8 @@
             CASE
                 WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
                 WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+                WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
                 WHEN b.status = 0 THEN '已取消'
                 WHEN b.status = 1 THEN '待付款'
                 WHEN b.status = 2 THEN '已付款'
@@ -37,6 +39,8 @@
             CASE
                 WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
                 WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+                WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
                 WHEN b.status = 0 THEN '已取消'
                 WHEN b.status = 1 THEN '待付款'
                 WHEN b.status = 2 THEN '已付款'
@@ -60,6 +64,8 @@
             CASE
                 WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
                 WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+                WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
                 WHEN b.status = 0 THEN '已取消'
                 WHEN b.status = 1 THEN '待付款'
                 WHEN b.status = 2 THEN '已付款'
@@ -83,6 +89,8 @@
         CASE
         WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
         WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+        WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+        WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
         WHEN b.status = 0 THEN '已取消'
         WHEN b.status = 1 THEN '待付款'
         WHEN b.status = 2 THEN '已付款'
@@ -141,7 +149,7 @@
             booking_no, court_id, user_id, booking_date,
             start_time, end_time, duration, unit_price,
             total_amount, contact_name, contact_phone,
-            remark, status, cancel_request_status, payment_channel, pay_time,
+            remark, status, cancel_request_status, payment_channel, pay_time, payment_verify_status,
             create_time, update_time
         ) VALUES (
                      #{bookingNo}, #{courtId}, #{userId}, #{bookingDate},
@@ -149,6 +157,7 @@
                      #{totalAmount}, #{contactName}, #{contactPhone},
                      #{remark}, #{status},
                      IFNULL(#{cancelRequestStatus}, 0), #{paymentChannel}, #{payTime},
+                     IFNULL(#{paymentVerifyStatus}, 0),
                      #{createTime}, #{updateTime}
                  )
     </insert>
@@ -171,6 +180,7 @@
             cancel_request_status = #{cancelRequestStatus},
             payment_channel = #{paymentChannel},
             pay_time = #{payTime},
+            payment_verify_status = #{paymentVerifyStatus},
             update_time = #{updateTime}
         WHERE id = #{id}
     </update>
@@ -182,6 +192,7 @@
           AND user_id = #{userId}
           AND status = 1
           AND cancel_request_status IN (0, 2)
+          AND payment_verify_status IN (0, 2)
     </update>
 
     <update id="adminApproveCancelBooking">
@@ -201,11 +212,45 @@
         SET status = 2,
             payment_channel = #{channel},
             pay_time = NOW(),
+            payment_verify_status = 0,
             update_time = NOW()
         WHERE id = #{id}
           AND user_id = #{userId}
           AND status = 1
           AND cancel_request_status IN (0, 2)
+          AND payment_verify_status IN (0, 2)
+    </update>
+
+    <update id="userClaimPaidBooking">
+        UPDATE booking
+        SET payment_verify_status = 1,
+            payment_channel = #{channel},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 1
+          AND cancel_request_status IN (0, 2)
+          AND payment_verify_status IN (0, 2)
+    </update>
+
+    <update id="adminApprovePaymentVerify">
+        UPDATE booking
+        SET status = 2,
+            payment_verify_status = 0,
+            pay_time = NOW(),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND payment_verify_status = 1
+          AND status = 1
+    </update>
+
+    <update id="adminRejectPaymentVerify">
+        UPDATE booking
+        SET payment_verify_status = 2,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND payment_verify_status = 1
+          AND status = 1
     </update>
 
     <select id="findBookingsPendingCancel" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
@@ -216,6 +261,9 @@
             u.phone as userPhone,
             CASE
                 WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+                WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
                 WHEN b.status = 0 THEN '已取消'
                 WHEN b.status = 1 THEN '待付款'
                 WHEN b.status = 2 THEN '已付款'
@@ -227,6 +275,31 @@
         LEFT JOIN court c ON b.court_id = c.id
         LEFT JOIN user u ON b.user_id = u.id
         WHERE b.cancel_request_status = 1
+        ORDER BY b.update_time DESC
+    </select>
+
+    <select id="findBookingsPendingPaymentVerify" resultType="com.tennis_court_booking.pojo.vo.BookingVO">
+        SELECT
+            b.*,
+            c.name as courtName,
+            u.username as userName,
+            u.phone as userPhone,
+            CASE
+                WHEN b.cancel_request_status = 1 AND b.status = 1 THEN '待付款（取消审核中）'
+                WHEN b.cancel_request_status = 2 AND b.status = 1 THEN '待付款（取消已驳回）'
+                WHEN b.payment_verify_status = 1 AND b.status = 1 THEN '待付款（付款审核中）'
+                WHEN b.payment_verify_status = 2 AND b.status = 1 THEN '待付款（付款审核已驳回）'
+                WHEN b.status = 0 THEN '已取消'
+                WHEN b.status = 1 THEN '待付款'
+                WHEN b.status = 2 THEN '已付款'
+                WHEN b.status = 3 THEN '已完成'
+                WHEN b.status = 4 THEN '已过期'
+                ELSE '未知'
+            END as statusText
+        FROM booking b
+        LEFT JOIN court c ON b.court_id = c.id
+        LEFT JOIN user u ON b.user_id = u.id
+        WHERE b.payment_verify_status = 1 AND b.status = 1
         ORDER BY b.update_time DESC
     </select>
 

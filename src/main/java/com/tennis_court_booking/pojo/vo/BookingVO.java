@@ -31,6 +31,8 @@ public class BookingVO {
     private String statusText;
     /** 0无 1待审取消 2驳回 */
     private Integer cancelRequestStatus;
+    /** 0无 1待审付款 2驳回 */
+    private Integer paymentVerifyStatus;
     private String paymentChannel;
     private LocalDateTime payTime;
     private LocalDateTime createTime;

@@ -76,6 +76,31 @@
       </el-form>
     </div>
 
+    <!-- 管理员：待审核「我已支付」 -->
+    <div v-if="isAdmin && !isMyPage && pendingPaymentVerifies.length" class="pending-payment-panel">
+      <h3 class="pending-payment-title">待审核付款确认（{{ pendingPaymentVerifies.length }}）</h3>
+      <el-table :data="pendingPaymentVerifies" size="small" border stripe class="pending-payment-table">
+        <el-table-column prop="bookingNo" label="预约单号" width="170" />
+        <el-table-column label="付款渠道" width="100">
+          <template #default="{ row }">{{ payChannelLabel(row.paymentChannel) }}</template>
+        </el-table-column>
+        <el-table-column prop="courtName" label="场地" width="110" />
+        <el-table-column prop="userName" label="用户" width="100" />
+        <el-table-column label="预约时间" min-width="170">
+          <template #default="{ row }">
+            {{ row.bookingDate }} {{ row.startTime }} - {{ row.endTime }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="totalAmount" label="金额(元)" width="90" align="right" />
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button type="success" size="small" @click="handleApprovePaymentVerify(row)">确认已收款</el-button>
+            <el-button type="warning" size="small" @click="handleRejectPaymentVerify(row)">驳回</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <!-- 管理员：待审核取消申请 -->
     <div v-if="isAdmin && !isMyPage && pendingCancels.length" class="pending-cancel-panel">
       <h3 class="pending-cancel-title">待审核取消申请（{{ pendingCancels.length }}）</h3>
@@ -211,6 +236,9 @@
                 <template v-if="Number(row.cancelRequestStatus) === 1">
                   <el-tag type="info" size="small" style="margin-left: 8px">取消审核中</el-tag>
                 </template>
+                <template v-else-if="Number(row.paymentVerifyStatus) === 1">
+                  <el-tag type="warning" size="small" style="margin-left: 8px">付款审核中</el-tag>
+                </template>
                 <template v-else>
                   <el-button type="success" size="small" @click="openPayDialog(row)">付款</el-button>
                   <el-button type="danger" size="small" plain @click="handleUserRequestCancel(row)">申请取消</el-button>
@@ -267,7 +295,13 @@
     </el-dialog>
 
     <!-- 用户付款方式 -->
-    <el-dialog v-model="payDialogVisible" title="选择付款方式" width="480px" destroy-on-close @close="payTarget = null">
+    <el-dialog
+        v-model="payDialogVisible"
+        title="选择付款方式"
+        width="480px"
+        destroy-on-close
+        @close="onPayMethodDialogClose"
+    >
       <div v-if="payTarget" class="pay-dialog-body">
         <p class="pay-order-info">订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ payTarget.totalAmount }}</span></p>
         <el-radio-group v-model="payChannel" class="pay-channel-group">
@@ -276,15 +310,35 @@
           <el-radio label="xianyu" border>闲鱼</el-radio>
         </el-radio-group>
         <p v-if="payChannel === 'xianyu'" class="pay-tip">
-          请按约定在闲鱼完成转账，管理员核对后可标记完成（当前演示：确认后即记为已付款）。
+          请选择后将弹出闲鱼收款码，按页面提示扫码付款。
         </p>
         <p v-else class="pay-tip">
-          当前为演示流程，确认后即记为已付款。正式接入微信/支付宝需提供商户参数，见项目文档 <code>docs/PAYMENT_INTEGRATION.md</code>。
+          请选择后将弹出对应收款码，扫码完成付款。
         </p>
       </div>
       <template #footer>
         <el-button @click="payDialogVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="paySubmitting" @click="confirmPay">确认付款</el-button>
+        <el-button type="primary" @click="confirmPay">去付款</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="payQrDialogVisible"
+      :title="`${payChannelLabel(payChannel)}收款码`"
+      width="560px"
+      destroy-on-close
+      @close="payTarget = null"
+    >
+      <div class="pay-qr-body">
+        <p v-if="payTarget" class="pay-order-info">
+          订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ payTarget.totalAmount }}</span>
+        </p>
+        <img :src="payQrImageMap[payChannel]" :alt="`${payChannelLabel(payChannel)}收款码`" class="pay-qr-image" />
+        <p class="pay-tip">请使用{{ payChannelLabel(payChannel) }}扫码付款。</p>
+      </div>
+      <template #footer>
+        <el-button @click="payQrDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="claimPaidSubmitting" @click="handleClaimPaid">我已支付</el-button>
       </template>
     </el-dialog>
 
@@ -428,8 +482,10 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { getAllBookings, getMyBookings, searchBookings, addBooking, updateBooking,
   deleteBookingById, batchDeleteBookings, cancelBooking,
   completeBooking, updateBookingStatus, getCourtSlotOptions,
-  requestCancelBooking, userPayBooking, getPendingCancelBookings,
-  adminApproveCancelBooking, adminRejectCancelBooking } from '@/api/booking'
+  requestCancelBooking, getPendingCancelBookings,
+  adminApproveCancelBooking, adminRejectCancelBooking,
+  claimPaidBooking, getPendingPaymentVerifyBookings,
+  adminApprovePaymentVerifyBooking, adminRejectPaymentVerifyBooking } from '@/api/booking'
 import { getAllCourts } from '@/api/court'
 import { getUserList } from '@/api/user'
 
@@ -493,11 +549,18 @@ const formData = reactive({
 const slotOptions = ref([])
 const slotLoading = ref(false)
 const pendingCancels = ref([])
+const pendingPaymentVerifies = ref([])
 
 const payDialogVisible = ref(false)
 const payTarget = ref(null)
 const payChannel = ref('wechat')
-const paySubmitting = ref(false)
+const payQrDialogVisible = ref(false)
+const claimPaidSubmitting = ref(false)
+const payQrImageMap = {
+  wechat: '/pay/wechat.png',
+  alipay: '/pay/alipay.png',
+  xianyu: '/pay/xianyu.png'
+}
 
 const slotMeta = ref({
   usedHours: 0,
@@ -721,6 +784,20 @@ const loadPendingCancels = async () => {
   }
 }
 
+const loadPendingPaymentVerifies = async () => {
+  if (!isAdmin.value || isMyPage.value) return
+  try {
+    const res = await getPendingPaymentVerifyBookings()
+    if (res.code === 200 && res.data) {
+      pendingPaymentVerifies.value = res.data
+    } else {
+      pendingPaymentVerifies.value = []
+    }
+  } catch (e) {
+    pendingPaymentVerifies.value = []
+  }
+}
+
 const handleUserRequestCancel = (row) => {
   ElMessageBox.confirm(
     '提交后需管理员审核通过，预约才会取消。确定申请取消？',
@@ -747,23 +824,68 @@ const openPayDialog = (row) => {
   payDialogVisible.value = true
 }
 
-const confirmPay = async () => {
+const confirmPay = () => {
   if (!payTarget.value) return
-  paySubmitting.value = true
+  payDialogVisible.value = false
+  payQrDialogVisible.value = true
+}
+
+/** 仅关闭选渠道弹窗（未进入收款码）时清空订单；若已点「去付款」会先打开收款码，此处不应清空 */
+const onPayMethodDialogClose = () => {
+  if (!payQrDialogVisible.value) {
+    payTarget.value = null
+  }
+}
+
+const handleClaimPaid = async () => {
+  if (!payTarget.value) {
+    ElMessage.warning('订单信息丢失，请关闭后重新点「付款」')
+    return
+  }
+  claimPaidSubmitting.value = true
   try {
-    const res = await userPayBooking(payTarget.value.id, { channel: payChannel.value })
+    const res = await claimPaidBooking(payTarget.value.id, { channel: payChannel.value })
     if (res.code === 200) {
-      ElMessage.success(res.message || '付款成功')
-      payDialogVisible.value = false
+      ElMessage.success(res.message || '已提交，请等待管理员确认')
+      payQrDialogVisible.value = false
+      payTarget.value = null
       await loadBookings()
     } else {
-      ElMessage.error(res.message || '付款失败')
+      ElMessage.error(res.message || '提交失败')
     }
   } catch (e) {
-    ElMessage.error(e.message || '付款失败')
+    ElMessage.error(e.message || '提交失败')
   } finally {
-    paySubmitting.value = false
+    claimPaidSubmitting.value = false
   }
+}
+
+const handleApprovePaymentVerify = (row) => {
+  ElMessageBox.confirm('确认已收到该笔款项？订单将变为已付款。', '确认收款', { type: 'warning' })
+    .then(async () => {
+      const res = await adminApprovePaymentVerifyBooking(row.id)
+      if (res.code === 200) {
+        ElMessage.success(res.message || '已处理')
+        await loadBookings()
+        await loadPendingPaymentVerifies()
+      } else {
+        ElMessage.error(res.message || '操作失败')
+      }
+    }).catch(() => {})
+}
+
+const handleRejectPaymentVerify = (row) => {
+  ElMessageBox.confirm('驳回后用户可再次扫码提交「我已支付」，确定？', '驳回', { type: 'info' })
+    .then(async () => {
+      const res = await adminRejectPaymentVerifyBooking(row.id)
+      if (res.code === 200) {
+        ElMessage.success(res.message || '已驳回')
+        await loadBookings()
+        await loadPendingPaymentVerifies()
+      } else {
+        ElMessage.error(res.message || '操作失败')
+      }
+    }).catch(() => {})
 }
 
 const handleApproveCancel = (row) => {
@@ -817,6 +939,7 @@ const loadBookings = async () => {
       bookings.value = result.data || []
       applyMyFilter()
       await loadPendingCancels()
+      await loadPendingPaymentVerifies()
     } else {
       filteredBookings.value = []
       error.value = result?.message || '加载失败'
@@ -886,6 +1009,7 @@ const handleSearch = async () => {
         bookings.value = result.data || []
         applyMyFilter()
         await loadPendingCancels()
+        await loadPendingPaymentVerifies()
       }
     } catch (err) {
       console.error('搜索失败:', err)
@@ -1202,6 +1326,7 @@ onMounted(async () => {
     loadUserOptions()
   ])
   await loadPendingCancels()
+  await loadPendingPaymentVerifies()
 
   // 如果是从场地列表带着 courtId 进入“我的预订”，自动打开新增预约弹窗
   if (isMyPage.value && route.query.courtId) {
@@ -1244,6 +1369,20 @@ onMounted(async () => {
   max-width: 100%;
 }
 
+.pending-payment-panel {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.pending-payment-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #1e40af;
+}
+
 .pending-cancel-panel {
   background: #fff7ed;
   border: 1px solid #fed7aa;
@@ -1283,6 +1422,21 @@ onMounted(async () => {
   font-size: 13px;
   color: #606266;
   line-height: 1.5;
+}
+
+.pay-qr-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 2px;
+}
+
+.pay-qr-image {
+  width: 320px;
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
 }
 
 .action-bar {

@@ -235,8 +235,24 @@ public class BookingController {
         String channel = body == null ? null : body.get("channel");
         int n = bookingService.userPayBooking(id, userId, channel);
         if (n == 0) {
-            return Result.error(400, "无法付款（请确认待付款、支付方式正确，且未在取消审核中）");
+            return Result.error(400, "无法付款（请确认待付款、支付方式正确，且未在取消/付款审核中）");
         }
         return Result.success("付款已确认", null);
+    }
+
+    /**
+     * 用户线下扫码后点击「我已支付」，提交所选渠道，等待管理员审核通过后变为已付款
+     */
+    @PostMapping("/bookings/{id}/claim-paid")
+    public Result<String> userClaimPaid(
+            @PathVariable Integer id,
+            @RequestAttribute("userId") Integer userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        String channel = body == null ? null : body.get("channel");
+        int n = bookingService.userClaimPaid(id, userId, channel);
+        if (n == 0) {
+            return Result.error(400, "无法提交（请确认本人待付款订单、支付方式正确，且未在取消审核中或付款审核中）");
+        }
+        return Result.success("已提交，请等待管理员确认收款", null);
     }
 }

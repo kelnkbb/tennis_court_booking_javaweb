@@ -1,0 +1,20 @@
+# 首先获取token（你已经知道正确的登录接口）
+echo "TOKEN长度: ${#TOKEN}"
+TOKEN=$(curl -s -X POST "http://localhost:8080/api/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"zsz","password":"ch112211"}' \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# 测试AI客服
+echo "TOKEN长度: ${#TOKEN}"
+curl -X POST "http://localhost:8080/api/ai/chat/simple" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message":"你好，帮我介绍下如何预约网球场"}'
+
+# 我们给ai接入了memory 现在来测试能否多轮对话
+echo "TOKEN长度: ${#TOKEN}"
+curl -X POST "http://localhost:8080/api/ai/chat/simple" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"message":"我要预订菜鸟驿站明天上午9点半-11点半的场地"}'

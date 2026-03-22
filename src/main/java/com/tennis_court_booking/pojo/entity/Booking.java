@@ -96,6 +96,11 @@ public class Booking {
     private LocalDateTime payTime;
 
     /**
+     * 线下付款审核：0-无 1-待管理员确认已付款 2-已驳回
+     */
+    private Integer paymentVerifyStatus;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

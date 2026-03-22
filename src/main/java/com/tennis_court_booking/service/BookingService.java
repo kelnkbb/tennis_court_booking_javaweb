@@ -111,9 +111,18 @@ public interface BookingService {
 
     int userPayBooking(Integer bookingId, Integer userId, String channel);
 
+    /** 用户扫码后提交「我已支付」，进入待管理员审核 */
+    int userClaimPaid(Integer bookingId, Integer userId, String channel);
+
     List<BookingVO> findBookingsPendingCancel();
+
+    List<BookingVO> findBookingsPendingPaymentVerify();
 
     int adminApproveCancel(Integer bookingId);
 
     int adminRejectCancel(Integer bookingId);
+
+    int adminApprovePaymentVerify(Integer bookingId);
+
+    int adminRejectPaymentVerify(Integer bookingId);
 }

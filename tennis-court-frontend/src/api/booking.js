@@ -154,6 +154,15 @@ export function userPayBooking(id, data) {
     })
 }
 
+/** 用户：线下扫码后提交「我已支付」，等待管理员审核 */
+export function claimPaidBooking(id, data) {
+    return request({
+        url: `/bookings/${id}/claim-paid`,
+        method: 'post',
+        data
+    })
+}
+
 /** 管理员：待审核取消列表 */
 export function getPendingCancelBookings() {
     return request({
@@ -172,6 +181,28 @@ export function adminApproveCancelBooking(id) {
 export function adminRejectCancelBooking(id) {
     return request({
         url: `/admin/bookings/${id}/cancel-request/reject`,
+        method: 'put'
+    })
+}
+
+/** 管理员：待审核「我已支付」列表 */
+export function getPendingPaymentVerifyBookings() {
+    return request({
+        url: '/admin/bookings/pending-payment-verifies',
+        method: 'get'
+    })
+}
+
+export function adminApprovePaymentVerifyBooking(id) {
+    return request({
+        url: `/admin/bookings/${id}/payment-verify/approve`,
+        method: 'put'
+    })
+}
+
+export function adminRejectPaymentVerifyBooking(id) {
+    return request({
+        url: `/admin/bookings/${id}/payment-verify/reject`,
         method: 'put'
     })
 }

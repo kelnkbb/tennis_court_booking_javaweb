@@ -60,7 +60,7 @@
       <!-- 头部 -->
       <header class="header">
         <div class="header-left">
-          <button class="menu-btn">☰</button>
+          <button class="menu-btn" @click="toggleSidebar">☰</button>
           <span class="page-title">{{ currentRoute }}</span>
         </div>
         <div class="header-right">
@@ -173,19 +173,125 @@
         <el-button @click="profileDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- AI 客服：右下角入口 + 悬浮窗 -->
+    <div class="ai-chat-widget" aria-live="polite">
+      <transition name="ai-panel">
+        <div v-show="aiPanelOpen" class="ai-chat-panel">
+          <div class="ai-chat-header">
+            <span class="ai-chat-title">AI 客服</span>
+            <div class="ai-chat-header-actions">
+              <el-button text circle @click="aiPanelOpen = false" title="关闭">
+                <el-icon><close /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div ref="aiMessagesRef" class="ai-chat-messages">
+            <div
+              v-for="(m, i) in aiMessages"
+              :key="i"
+              class="ai-msg"
+              :class="m.role === 'user' ? 'ai-msg-user' : 'ai-msg-assistant'"
+            >
+              <span class="ai-msg-label">{{ m.role === 'user' ? '我' : '客服' }}</span>
+              <div
+                v-if="m.role === 'user'"
+                class="ai-msg-bubble ai-msg-plain"
+              >{{ m.content }}</div>
+              <div
+                v-else
+                class="ai-msg-bubble ai-msg-md"
+                v-html="renderAssistantMarkdown(m.content)"
+              />
+              <div
+                v-if="m.role === 'assistant' && m.quickOptions?.length"
+                class="ai-quick-options"
+              >
+                <div class="ai-quick-chips">
+                  <el-button
+                    v-for="(q, qi) in m.quickOptions"
+                    :key="qi"
+                    size="small"
+                    round
+                    plain
+                    type="primary"
+                    :disabled="aiAwaitingReply"
+                    @click="sendAiQuick(q)"
+                  >
+                    {{ q }}
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            <div v-if="aiAwaitingReply" class="ai-msg ai-msg-assistant ai-msg-pending">
+              <span class="ai-msg-label">客服</span>
+              <div class="ai-msg-bubble">正在思考…</div>
+            </div>
+          </div>
+          <div class="ai-chat-footer">
+            <el-input
+              v-model="aiInput"
+              type="textarea"
+              :rows="2"
+              placeholder="输入问题，Enter 发送（Shift+Enter 换行）"
+              resize="none"
+              :disabled="aiInputLocked"
+              @keydown.enter.exact.prevent="submitAiFromInput"
+            />
+            <el-button
+              type="primary"
+              class="ai-send-btn"
+              :loading="aiAwaitingReply"
+              :disabled="!aiInput.trim() || aiAwaitingReply"
+              @click="submitAiFromInput"
+            >
+              发送
+            </el-button>
+            <div class="ai-mode-switch" v-if="showModeSwitch">
+              <el-tag 
+                size="small" 
+                :type="useAsyncMode ? 'success' : 'info'"
+                style="cursor: pointer"
+                @click="toggleAsyncMode"
+              >
+                {{ useAsyncMode ? '⚡异步模式' : '🔄同步模式' }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+      </transition>
+      <button
+        type="button"
+        class="ai-chat-fab"
+        :class="{ 'ai-chat-fab--open': aiPanelOpen }"
+        :aria-label="aiPanelOpen ? '收起 AI 客服' : '打开 AI 客服'"
+        @click="toggleAiPanel"
+      >
+        <el-icon :size="aiPanelOpen ? 22 : 26"><chat-dot-round /></el-icon>
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, User, Lock, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowDown, User, Lock, SwitchButton, ChatDotRound, Close } from '@element-plus/icons-vue'
 import { logout, changePassword, getCurrentUser } from '@/api/auth'
+import { aiSimpleChat, aiAsyncChat, getAiTaskStatus } from '@/api/ai'
+import { renderAssistantMarkdown } from '@/utils/renderMarkdown'
+import { connectBookingNotifications, disconnectBookingNotifications } from '@/utils/bookingNotificationWs'
 
 const route = useRoute()
 const router = useRouter()
 const currentUser = ref(null)
+
+// AI 异步服务配置
+const useAsyncMode = ref(true)  // true: 异步模式, false: 同步模式
+const showModeSwitch = ref(false)  // 是否显示模式切换（开发调试用，生产可设为 false）
+const pollingInterval = 2000  // 轮询间隔（毫秒）
+const maxPollingAttempts = 30  // 最大轮询次数
 
 const isAdmin = computed(() => {
   const r = currentUser.value?.role
@@ -204,6 +310,228 @@ const passwordForm = ref({
 
 // 个人信息对话框
 const profileDialogVisible = ref(false)
+
+// AI 客服悬浮窗
+const aiPanelOpen = ref(false)
+const aiInput = ref('')
+/** 等待本轮客服回复（含异步轮询）；用于「正在思考」与发送按钮 loading */
+const aiAwaitingReply = ref(false)
+/** 仅同步模式在等待时锁定输入框；异步模式可继续输入草稿，仅禁止重复发送 */
+const aiInputLocked = computed(() => !useAsyncMode.value && aiAwaitingReply.value)
+const aiMessagesRef = ref(null)
+const aiMessages = ref([
+  {
+    role: 'assistant',
+    content: '您好，我是网球场地预约助手。需要时可直接点下方快捷操作，或输入您的问题。',
+    quickOptions: ['有哪些网球场', '查看我的预约', '明天怎么预约']
+  }
+])
+
+// 侧边栏折叠状态（移动端）
+const sidebarOpen = ref(false)
+
+const scrollAiToBottom = () => {
+  nextTick(() => {
+    const el = aiMessagesRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+const toggleAiPanel = () => {
+  aiPanelOpen.value = !aiPanelOpen.value
+  if (aiPanelOpen.value) scrollAiToBottom()
+}
+
+const toggleSidebar = () => {
+  sidebarOpen.value = !sidebarOpen.value
+  const sidebar = document.querySelector('.sidebar')
+  if (sidebar) {
+    if (sidebarOpen.value) {
+      sidebar.classList.add('open')
+    } else {
+      sidebar.classList.remove('open')
+    }
+  }
+}
+
+watch(aiMessages, () => scrollAiToBottom(), { deep: true })
+watch(aiAwaitingReply, (v) => {
+  if (v) scrollAiToBottom()
+})
+
+/** 仅使用接口返回的 quickOptions，不再用固定文案兜底，以便随每次客服回复变化 */
+const normalizeAiPayload = (data) => {
+  if (data == null) {
+    return { content: '（无回复内容）', quickOptions: [] }
+  }
+  if (typeof data === 'string') {
+    return { content: data, quickOptions: [] }
+  }
+  const content = data.content != null ? String(data.content) : '（无回复内容）'
+  const raw = data.quickOptions
+  const quickOptions = Array.isArray(raw)
+    ? raw.map((x) => String(x).trim()).filter(Boolean).slice(0, 5)
+    : []
+  return { content, quickOptions }
+}
+
+/**
+ * 异步模式：轮询任务状态（串行：上一请求结束后再间隔 pollingInterval，避免 setInterval 与未完成请求重叠）
+ */
+const pollTaskStatus = (taskId) => {
+  return new Promise((resolve, reject) => {
+    let attempts = 0
+    let timeoutId = null
+
+    const clear = () => {
+      if (timeoutId != null) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
+
+    const scheduleNext = () => {
+      timeoutId = setTimeout(run, pollingInterval)
+    }
+
+    const run = async () => {
+      attempts++
+      try {
+        const result = await getAiTaskStatus(taskId)
+
+        if (result.code === 200) {
+          const { status, reply, errorMessage } = result.data
+
+          if (status === 'SUCCEEDED') {
+            clear()
+            resolve(reply)
+            return
+          }
+          if (status === 'FAILED' || status === 'DEAD') {
+            clear()
+            reject(new Error(errorMessage || '处理失败'))
+            return
+          }
+        } else if (result.code === 404) {
+          clear()
+          reject(new Error(result.message || '任务不存在或已过期'))
+          return
+        } else if (result.code === 401) {
+          clear()
+          reject(new Error(result.message || '请先登录'))
+          return
+        }
+
+        if (attempts >= maxPollingAttempts) {
+          clear()
+          reject(new Error('请求超时，请稍后重试'))
+          return
+        }
+        scheduleNext()
+      } catch (error) {
+        console.error('轮询失败:', error)
+        if (attempts >= maxPollingAttempts) {
+          clear()
+          reject(error instanceof Error ? error : new Error('请求超时，请稍后重试'))
+          return
+        }
+        scheduleNext()
+      }
+    }
+
+    run()
+  })
+}
+
+/**
+ * 异步模式：发送消息
+ */
+const sendAsyncMessage = async (text) => {
+  // 1. 提交异步任务
+  const submitResult = await aiAsyncChat(text)
+  
+  if (submitResult.code !== 200) {
+    throw new Error(submitResult.message || '提交失败')
+  }
+  
+  const { taskId } = submitResult.data
+  
+  // 2. 轮询获取结果
+  const reply = await pollTaskStatus(taskId)
+  return { code: 200, data: reply }
+}
+
+/**
+ * 同步模式：发送消息（原有逻辑）
+ */
+const sendSyncMessage = async (text) => {
+  return await aiSimpleChat(text)
+}
+
+const sendAiQuick = (label) => {
+  sendAiText(String(label || '').trim())
+}
+
+const submitAiFromInput = () => {
+  const text = aiInput.value.trim()
+  if (!text || aiAwaitingReply.value) return
+  aiInput.value = ''
+  sendAiText(text)
+}
+
+const sendAiText = async (text) => {
+  if (!text || aiAwaitingReply.value) return
+
+  aiMessages.value.push({ role: 'user', content: text })
+  aiAwaitingReply.value = true
+  scrollAiToBottom()
+
+  try {
+    let result
+
+    if (useAsyncMode.value) {
+      console.log('🚀 使用异步模式发送消息')
+      result = await sendAsyncMessage(text)
+    } else {
+      console.log('🔄 使用同步模式发送消息')
+      result = await sendSyncMessage(text)
+    }
+
+    if (result.code === 200) {
+      const { content, quickOptions } = normalizeAiPayload(result.data)
+      aiMessages.value.push({
+        role: 'assistant',
+        content,
+        quickOptions
+      })
+    } else {
+      ElMessage.error(result.message || '请求失败')
+      aiMessages.value.push({
+        role: 'assistant',
+        content: `抱歉，${result.message || '暂时无法回答'}。`,
+        quickOptions: []
+      })
+    }
+  } catch (e) {
+    console.error('AI 客服:', e)
+    const errorMsg = e.message || '网络或服务异常，请稍后再试。'
+    ElMessage.error(errorMsg)
+    aiMessages.value.push({
+      role: 'assistant',
+      content: errorMsg,
+      quickOptions: []
+    })
+  } finally {
+    aiAwaitingReply.value = false
+    scrollAiToBottom()
+  }
+}
+
+// 切换同步/异步模式（开发调试用）
+const toggleAsyncMode = () => {
+  useAsyncMode.value = !useAsyncMode.value
+  ElMessage.info(`已切换到${useAsyncMode.value ? '异步模式' : '同步模式'}${useAsyncMode.value ? '（推荐，页面不卡顿）' : '（传统模式，可能卡顿）'}`)
+}
 
 // 密码验证规则
 const passwordRules = {
@@ -345,6 +673,7 @@ const handleLogout = async (silent = false) => {
       // 清除本地存储
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      disconnectBookingNotifications()
 
       ElMessage.success('已退出登录')
       router.push('/login')
@@ -353,6 +682,7 @@ const handleLogout = async (silent = false) => {
       // 即使接口调用失败，也清除本地存储并跳转
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      disconnectBookingNotifications()
       router.push('/login')
     }
   }
@@ -391,8 +721,38 @@ const formatDate = (dateString) => {
   }
 }
 
+// 监听路由变化，关闭移动端侧边栏
+watch(() => route.path, () => {
+  if (window.innerWidth <= 768) {
+    sidebarOpen.value = false
+    const sidebar = document.querySelector('.sidebar')
+    if (sidebar) {
+      sidebar.classList.remove('open')
+    }
+  }
+})
+
+const handleBookingWsMessage = (data) => {
+  const title = data?.title || '预约通知'
+  const body = data?.message || ''
+  ElMessage.success({ message: `${title}${body ? '：' + body : ''}`, duration: 6500, showClose: true })
+}
+
 onMounted(() => {
   loadCurrentUser()
+
+  if (localStorage.getItem('token')) {
+    connectBookingNotifications(handleBookingWsMessage)
+  }
+
+  // 可选：在开发环境显示模式切换（生产环境可注释）
+  if (import.meta.env.DEV) {
+    showModeSwitch.value = true
+  }
+})
+
+onUnmounted(() => {
+  disconnectBookingNotifications()
 })
 </script>
 
@@ -411,6 +771,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  transition: left 0.3s ease;
+  z-index: 1000;
 }
 
 .logo {
@@ -594,5 +956,273 @@ onMounted(() => {
   .menu-btn {
     display: block;
   }
+}
+
+/* —— AI 客服悬浮组件 —— */
+.ai-chat-widget {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.ai-chat-widget > * {
+  pointer-events: auto;
+}
+
+.ai-chat-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.ai-chat-fab:hover {
+  transform: scale(1.06);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.55);
+}
+
+.ai-chat-fab--open {
+  width: 48px;
+  height: 48px;
+  opacity: 0.95;
+}
+
+.ai-panel-enter-active,
+.ai-panel-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ai-panel-enter-from,
+.ai-panel-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+.ai-chat-panel {
+  width: min(100vw - 48px, 760px);
+  height: min(100vh - 80px, 1040px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e8e8ef;
+}
+
+.ai-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 12px 16px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.ai-chat-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.ai-chat-header-actions .el-button {
+  color: #fff;
+}
+
+.ai-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: #f7f8fc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.ai-msg-user {
+  align-items: flex-end;
+}
+
+.ai-msg-assistant {
+  align-items: flex-start;
+}
+
+.ai-msg-label {
+  font-size: 11px;
+  color: #909399;
+  padding: 0 4px;
+}
+
+.ai-msg-bubble {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.ai-msg-plain {
+  white-space: pre-wrap;
+}
+
+.ai-msg-md {
+  white-space: normal;
+}
+
+.ai-msg-md :deep(p) {
+  margin: 0.35em 0;
+}
+
+.ai-msg-md :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.ai-msg-md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.ai-msg-md :deep(ul),
+.ai-msg-md :deep(ol) {
+  margin: 0.35em 0;
+  padding-left: 1.35em;
+}
+
+.ai-msg-md :deep(li) {
+  margin: 0.15em 0;
+}
+
+.ai-msg-md :deep(strong) {
+  font-weight: 600;
+}
+
+.ai-msg-md :deep(em) {
+  font-style: italic;
+}
+
+.ai-msg-md :deep(a) {
+  color: #667eea;
+  word-break: break-all;
+}
+
+.ai-msg-md :deep(code) {
+  font-size: 0.9em;
+  padding: 0.12em 0.35em;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+}
+
+.ai-msg-md :deep(pre) {
+  overflow-x: auto;
+  margin: 0.5em 0;
+  padding: 8px 10px;
+  background: #f5f6f8;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ai-msg-md :deep(pre code) {
+  padding: 0;
+  background: none;
+}
+
+.ai-msg-md :deep(h1),
+.ai-msg-md :deep(h2),
+.ai-msg-md :deep(h3) {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+
+.ai-msg-md :deep(h1:first-child),
+.ai-msg-md :deep(h2:first-child),
+.ai-msg-md :deep(h3:first-child) {
+  margin-top: 0;
+}
+
+.ai-msg-md :deep(blockquote) {
+  margin: 0.35em 0;
+  padding-left: 0.75em;
+  border-left: 3px solid #dcdfe6;
+  color: #606266;
+}
+
+.ai-msg-md :deep(hr) {
+  margin: 0.6em 0;
+  border: none;
+  border-top: 1px solid #ebeef5;
+}
+
+.ai-msg-user .ai-msg-bubble {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.ai-msg-assistant .ai-msg-bubble {
+  background: #fff;
+  color: #303133;
+  border: 1px solid #ebeef5;
+  border-bottom-left-radius: 4px;
+}
+
+.ai-msg-pending .ai-msg-bubble {
+  color: #909399;
+  font-style: italic;
+}
+
+.ai-quick-options {
+  margin-top: 6px;
+  max-width: 100%;
+  padding-left: 4px;
+}
+
+.ai-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-quick-chips .el-button {
+  margin: 0;
+  font-size: 12px;
+}
+
+.ai-chat-footer {
+  padding: 12px;
+  background: #fff;
+  border-top: 1px solid #ebeef5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-send-btn {
+  align-self: flex-end;
+}
+
+.ai-mode-switch {
+  align-self: flex-end;
+  margin-top: 4px;
 }
 </style>

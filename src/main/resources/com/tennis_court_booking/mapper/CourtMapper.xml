@@ -20,6 +20,9 @@
     <select id="getCourt" resultType="com.tennis_court_booking.pojo.entity.Court">
         SELECT * FROM court WHERE id = #{id}
     </select>
+    <select id="searchCourts" resultType="com.tennis_court_booking.pojo.entity.Court">
+        SELECT * FROM court WHERE name LIKE '%${keyword}%' OR address LIKE '%${keyword}%'
+    </select>
 
     <update id="updateCourt">
         UPDATE court

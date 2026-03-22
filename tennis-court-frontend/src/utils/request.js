@@ -31,11 +31,12 @@ request.interceptors.response.use(
 
         // 如果后端返回了code，可以根据code做统一处理
         if (response.data && response.data.code === 401) {
-            // token过期或无效
             localStorage.removeItem('token')
             localStorage.removeItem('user')
             router.push('/login')
-            ElMessage.error('登录已过期，请重新登录')
+            if (!response.config.skipErrorToast) {
+                ElMessage.error('登录已过期，请重新登录')
+            }
             return Promise.reject(new Error('登录已过期'))
         }
 
@@ -44,28 +45,30 @@ request.interceptors.response.use(
     error => {
         console.error('📥 响应错误:', error.response || error)
 
+        const silent = error.config?.skipErrorToast
+
         if (error.response) {
             switch (error.response.status) {
                 case 401:
                     localStorage.removeItem('token')
                     localStorage.removeItem('user')
                     router.push('/login')
-                    ElMessage.error('未授权，请重新登录')
+                    if (!silent) ElMessage.error('未授权，请重新登录')
                     break
                 case 403:
-                    ElMessage.error('没有权限访问')
+                    if (!silent) ElMessage.error('没有权限访问')
                     break
                 case 404:
-                    ElMessage.error('请求的资源不存在')
+                    if (!silent) ElMessage.error('请求的资源不存在')
                     break
                 case 500:
-                    ElMessage.error('服务器错误')
+                    if (!silent) ElMessage.error('服务器错误')
                     break
                 default:
-                    ElMessage.error(error.response.data?.message || '请求失败')
+                    if (!silent) ElMessage.error(error.response.data?.message || '请求失败')
             }
         } else {
-            ElMessage.error('网络错误，请检查连接')
+            if (!silent) ElMessage.error('网络错误，请检查连接')
         }
 
         return Promise.reject(error)

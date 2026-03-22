@@ -125,5 +125,13 @@ public interface BookingMapper {
 
     int userPayBooking(@Param("id") Integer id, @Param("userId") Integer userId, @Param("channel") String channel);
 
+    int userClaimPaidBooking(@Param("id") Integer id, @Param("userId") Integer userId, @Param("channel") String channel);
+
     List<BookingVO> findBookingsPendingCancel();
+
+    List<BookingVO> findBookingsPendingPaymentVerify();
+
+    int adminApprovePaymentVerify(@Param("id") Integer id);
+
+    int adminRejectPaymentVerify(@Param("id") Integer id);
 }

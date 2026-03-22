@@ -40,4 +40,27 @@ public class AdminBookingController {
         }
         return Result.success("已驳回，用户可继续付款或再次申请取消", null);
     }
+
+    @GetMapping("/pending-payment-verifies")
+    public Result<List<BookingVO>> listPendingPaymentVerifies() {
+        return Result.success(bookingService.findBookingsPendingPaymentVerify());
+    }
+
+    @PutMapping("/{id}/payment-verify/approve")
+    public Result<String> approvePaymentVerify(@PathVariable Integer id) {
+        int n = bookingService.adminApprovePaymentVerify(id);
+        if (n == 0) {
+            return Result.error(400, "无待审核的付款确认或订单不存在");
+        }
+        return Result.success("已确认收款，订单已标记为已付款", null);
+    }
+
+    @PutMapping("/{id}/payment-verify/reject")
+    public Result<String> rejectPaymentVerify(@PathVariable Integer id) {
+        int n = bookingService.adminRejectPaymentVerify(id);
+        if (n == 0) {
+            return Result.error(400, "无待审核的付款确认或订单不存在");
+        }
+        return Result.success("已驳回，用户可修改后再次提交", null);
+    }
 }

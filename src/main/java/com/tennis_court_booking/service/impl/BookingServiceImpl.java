@@ -12,6 +12,7 @@ import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
 import com.tennis_court_booking.pojo.vo.SlotOptionVO;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import com.tennis_court_booking.service.BookingService;
+import com.tennis_court_booking.websocket.BookingNotificationPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,9 @@ public class BookingServiceImpl implements BookingService {
 
     @Autowired
     private CourtMapper courtMapper;
+
+    @Autowired
+    private BookingNotificationPublisher bookingNotificationPublisher;
 
     @Override
     public List<BookingVO> findAll() {
@@ -112,6 +116,9 @@ public class BookingServiceImpl implements BookingService {
         if (booking.getCancelRequestStatus() == null) {
             booking.setCancelRequestStatus(0);
         }
+        if (booking.getPaymentVerifyStatus() == null) {
+            booking.setPaymentVerifyStatus(0);
+        }
 
         bookingMapper.addBooking(booking);
         System.out.println("新增成功，生成ID: " + booking.getId());
@@ -127,6 +134,8 @@ public class BookingServiceImpl implements BookingService {
         if (existingVo != null) {
             booking.setCancelRequestStatus(
                     existingVo.getCancelRequestStatus() != null ? existingVo.getCancelRequestStatus() : 0);
+            booking.setPaymentVerifyStatus(
+                    existingVo.getPaymentVerifyStatus() != null ? existingVo.getPaymentVerifyStatus() : 0);
             booking.setPaymentChannel(existingVo.getPaymentChannel());
             booking.setPayTime(existingVo.getPayTime());
         }
@@ -350,17 +359,72 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
+    public int userClaimPaid(Integer bookingId, Integer userId, String channel) {
+        if (channel == null) {
+            return 0;
+        }
+        String c = channel.trim().toLowerCase();
+        if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu")) {
+            return 0;
+        }
+        return bookingMapper.userClaimPaidBooking(bookingId, userId, c);
+    }
+
+    @Override
     public List<BookingVO> findBookingsPendingCancel() {
         return bookingMapper.findBookingsPendingCancel();
     }
 
     @Override
+    public List<BookingVO> findBookingsPendingPaymentVerify() {
+        return bookingMapper.findBookingsPendingPaymentVerify();
+    }
+
+    @Override
     public int adminApproveCancel(Integer bookingId) {
-        return bookingMapper.adminApproveCancelBooking(bookingId);
+        int n = bookingMapper.adminApproveCancelBooking(bookingId);
+        if (n > 0) {
+            BookingVO vo = bookingMapper.findById(bookingId);
+            if (vo != null && vo.getUserId() != null) {
+                bookingNotificationPublisher.notifyCancelRequestResult(vo.getUserId(), bookingId, true);
+            }
+        }
+        return n;
     }
 
     @Override
     public int adminRejectCancel(Integer bookingId) {
-        return bookingMapper.adminRejectCancelBooking(bookingId);
+        int n = bookingMapper.adminRejectCancelBooking(bookingId);
+        if (n > 0) {
+            BookingVO vo = bookingMapper.findById(bookingId);
+            if (vo != null && vo.getUserId() != null) {
+                bookingNotificationPublisher.notifyCancelRequestResult(vo.getUserId(), bookingId, false);
+            }
+        }
+        return n;
+    }
+
+    @Override
+    public int adminApprovePaymentVerify(Integer bookingId) {
+        int n = bookingMapper.adminApprovePaymentVerify(bookingId);
+        if (n > 0) {
+            BookingVO vo = bookingMapper.findById(bookingId);
+            if (vo != null && vo.getUserId() != null) {
+                bookingNotificationPublisher.notifyPaymentVerifyResult(vo.getUserId(), bookingId, true);
+            }
+        }
+        return n;
+    }
+
+    @Override
+    public int adminRejectPaymentVerify(Integer bookingId) {
+        int n = bookingMapper.adminRejectPaymentVerify(bookingId);
+        if (n > 0) {
+            BookingVO vo = bookingMapper.findById(bookingId);
+            if (vo != null && vo.getUserId() != null) {
+                bookingNotificationPublisher.notifyPaymentVerifyResult(vo.getUserId(), bookingId, false);
+            }
+        }
+        return n;
     }
 }

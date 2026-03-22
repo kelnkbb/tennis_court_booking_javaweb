@@ -11,4 +11,6 @@ public interface CourtMapper {
     void addCourt(Court court);
     Court getCourt(Integer id);
     void updateCourt(Court court);  // 添加更新方法
+
+    List<Court> searchCourts(String keyword);
 }

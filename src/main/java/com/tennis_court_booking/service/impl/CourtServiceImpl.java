@@ -1,5 +1,6 @@
 package com.tennis_court_booking.service.impl;
 
+import com.tennis_court_booking.cache.CourtMultilevelCacheManager;
 import com.tennis_court_booking.mapper.CourtMapper;
 import com.tennis_court_booking.pojo.entity.Court;
 import com.tennis_court_booking.service.CourtService;
@@ -7,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -16,14 +17,18 @@ public class CourtServiceImpl implements CourtService {
     @Autowired
     private CourtMapper courtMapper;
 
+    @Autowired
+    private CourtMultilevelCacheManager courtCache;
+
     @Override
     public List<Court> findAll() {
-        return courtMapper.findAll();
+        return courtCache.findAllCourts(() -> courtMapper.findAll());
     }
 
     @Override
     public void deleteById(Integer id) {
         courtMapper.deleteById(id);
+        courtCache.evictAfterCourtMutation(id);
     }
 
     @Override
@@ -38,24 +43,45 @@ public class CourtServiceImpl implements CourtService {
         courtMapper.addCourt(court);
         System.out.println("插入成功，生成ID: " + court.getId());
 
+        courtCache.evictAfterCourtMutation(court.getId());
         return court;
     }
 
     @Override
     public Court getCourt(Integer id) {
-        return courtMapper.getCourt(id);
+        return courtCache.getCourt(id, () -> courtMapper.getCourt(id));
+    }
+
+    @Override
+    public List<Court> searchCourts(String keyword) {
+        return courtMapper.searchCourts(keyword);
     }
 
     @Override
     public Court updateCourt(Court court) {
         System.out.println("Service层更新court: " + court);
 
-        // 可以在这里添加更新时间字段（如果数据库表有update_time字段）
-        // court.setUpdateTime(LocalDateTime.now());
-
         courtMapper.updateCourt(court);
         System.out.println("更新成功，ID: " + court.getId());
 
+        courtCache.evictAfterCourtMutation(court.getId());
         return court;
+    }
+
+    @Override
+    public List<Court> hotCourts(int topN) {
+        int n = Math.min(Math.max(topN, 1), 50);
+        List<Integer> ids = courtCache.getHotCourtIds(n);
+        if (ids.isEmpty()) {
+            return findAll().stream().limit(n).toList();
+        }
+        List<Court> out = new ArrayList<>();
+        for (Integer id : ids) {
+            Court c = getCourt(id);
+            if (c != null) {
+                out.add(c);
+            }
+        }
+        return out;
     }
 }

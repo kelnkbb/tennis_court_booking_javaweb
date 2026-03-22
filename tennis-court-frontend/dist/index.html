@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网球场地预订系统</title>
+    <script type="module" crossorigin src="/assets/index-CmdB9pfd.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-18s2Q32d.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+
+
+<!--&lt;!&ndash;完整的vue框架前后端数据对接流程&ndash;&gt;-->
+<!--    页面初始化-->
+
+<!--用户访问 http://localhost:5173/-->
+<!--↓-->
+<!--Vite 返回 index.html-->
+<!--↓-->
+<!--加载 main.js → 创建 Vue 应用 → 挂载到 #app-->
+<!--↓-->
+<!--App.vue 渲染，遇到 <router-view>-->
+<!--    ↓-->
+<!--    路由匹配路径 '/' → 加载 UserList.vue 组件-->
+
+<!--    组件加载数据 -->
+<!--    -->
+<!--    UserList.vue 执行 onMounted 钩子-->
+<!--    ↓-->
+<!--调用 loadUsers() 函数-->
+<!--    ↓-->
+<!--调用 getUserList() (来自 api/user.js)-->
+<!--    ↓-->
+<!--Axios 发送 HTTP GET 请求到 /api/userlist-->
+
+<!--    Vite 代理转发-->
+<!--    请求到达 Vite 开发服务器 (localhost:5173)-->
+<!--    ↓-->
+<!--匹配代理规则 '/api'-->
+<!--    ↓-->
+<!--转发到 target: http://localhost:8080/api/userlist-->
+<!--    ↓-->
+<!--Spring Boot 接收到请求-->
+
+<!--    后端处理-->
+<!--    UserController.findAll() 接收请求-->
+<!--    ↓-->
+<!--调用 UserService.findAll()-->
+<!--    ↓-->
+<!--调用 UserMapper.findAll()-->
+<!--    ↓-->
+<!--执行 SQL: SELECT * FROM user-->
+<!--    ↓-->
+<!--MySQL 返回结果集-->
+<!--    ↓-->
+<!--MyBatis 映射为 List<User>-->
+<!--    ↓-->
+<!--UserService 过滤密码字段-->
+<!--    ↓-->
+<!--UserController 返回 JSON-->
+
+<!--    前端渲染-->
+<!--    -->
+<!--    JSON 响应通过代理返回前端-->
+<!--    ↓-->
+<!--Axios 接收响应-->
+<!--    ↓-->
+<!--response.data = [{id:1, username:"admin"...}]-->
+<!--    ↓-->
+<!--users.value = response.data (触发响应式更新)-->
+<!--    ↓-->
+<!--Vue 重新渲染模板-->
+<!--    ↓-->
+<!--页面显示用户列表-->
