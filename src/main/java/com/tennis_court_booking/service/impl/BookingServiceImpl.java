@@ -1,6 +1,7 @@
 // com/tennis_court_booking/service/impl/BookingServiceImpl.java
 package com.tennis_court_booking.service.impl;
 
+import com.tennis_court_booking.cache.BookingCacheManager;
 import com.tennis_court_booking.mapper.BookingMapper;
 import com.tennis_court_booking.mapper.CourtMapper;
 import com.tennis_court_booking.pojo.entity.Booking;
@@ -12,6 +13,7 @@ import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
 import com.tennis_court_booking.pojo.vo.SlotOptionVO;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import com.tennis_court_booking.service.BookingService;
+import com.tennis_court_booking.coupon.service.CouponRedemptionService;
 import com.tennis_court_booking.websocket.BookingNotificationPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -44,6 +46,12 @@ public class BookingServiceImpl implements BookingService {
     @Autowired
     private BookingNotificationPublisher bookingNotificationPublisher;
 
+    @Autowired
+    private CouponRedemptionService couponRedemptionService;
+
+    @Autowired
+    private BookingCacheManager bookingCacheManager;
+
     @Override
     public List<BookingVO> findAll() {
         return bookingMapper.findAll();
@@ -51,7 +59,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public BookingVO findById(Integer id) {
-        return bookingMapper.findById(id);
+        return bookingCacheManager.getBooking(id, () -> bookingMapper.findById(id));
     }
 
     @Override
@@ -80,7 +88,7 @@ public class BookingServiceImpl implements BookingService {
             booking.setDuration(hours);
         }
 
-        // 获取场地单价并计算总金额
+        // 获取场地单价并计算总金额（原价）
         if (booking.getCourtId() != null && booking.getDuration() != null) {
             Court court = courtMapper.getCourt(booking.getCourtId());
             if (court != null) {
@@ -91,8 +99,15 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        // 设置默认状态为待付款
-        if (booking.getStatus() == null) {
+        String couponInput = booking.getCouponCode();
+        Long couponRecordId = couponRedemptionService.applyCouponIfPresent(booking, couponInput);
+
+        // 0 元单：直接记已付款
+        if (booking.getPayAmount() != null && booking.getPayAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            booking.setStatus(2);
+            booking.setPayTime(LocalDateTime.now());
+            booking.setPaymentVerifyStatus(0);
+        } else if (booking.getStatus() == null) {
             booking.setStatus(1); // 待付款
         }
 
@@ -122,6 +137,9 @@ public class BookingServiceImpl implements BookingService {
 
         bookingMapper.addBooking(booking);
         System.out.println("新增成功，生成ID: " + booking.getId());
+
+        couponRedemptionService.markCouponUsed(couponRecordId, booking.getId());
+        bookingCacheManager.evictAfterBookingMutation(booking.getId());
 
         return booking;
     }
@@ -161,6 +179,19 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
+        // 编辑时保留原券：随总价变化重算应付（抵扣不超过新原价）
+        if (existingVo != null && existingVo.getCouponCode() != null) {
+            booking.setCouponCode(existingVo.getCouponCode());
+            BigDecimal d = existingVo.getCouponDiscount() != null ? existingVo.getCouponDiscount() : BigDecimal.ZERO;
+            d = d.min(booking.getTotalAmount() != null ? booking.getTotalAmount() : d);
+            booking.setCouponDiscount(d);
+            booking.setPayAmount(booking.getTotalAmount().subtract(d));
+        } else {
+            booking.setCouponCode(null);
+            booking.setCouponDiscount(null);
+            booking.setPayAmount(booking.getTotalAmount());
+        }
+
         // 检查时间冲突（排除当前预约）
         if (!checkTimeAvailable(booking.getCourtId(), booking.getBookingDate(),
                 booking.getStartTime(), booking.getEndTime(), booking.getId())) {
@@ -179,6 +210,7 @@ public class BookingServiceImpl implements BookingService {
 
         bookingMapper.updateBooking(booking);
         System.out.println("更新成功，ID: " + booking.getId());
+        bookingCacheManager.evictAfterBookingMutation(booking.getId());
 
         return booking;
     }
@@ -186,26 +218,35 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public void updateStatus(Integer id, Integer status) {
         bookingMapper.updateStatus(id, status);
+        bookingCacheManager.evictAfterBookingMutation(id);
     }
 
     @Override
     public void cancelBooking(Integer id) {
         bookingMapper.updateStatus(id, 0); // 0-已取消
+        bookingCacheManager.evictAfterBookingMutation(id);
     }
 
     @Override
     public void completeBooking(Integer id) {
         bookingMapper.updateStatus(id, 3); // 3-已完成
+        bookingCacheManager.evictAfterBookingMutation(id);
     }
 
     @Override
     public void deleteById(Integer id) {
         bookingMapper.deleteById(id);
+        bookingCacheManager.evictAfterBookingMutation(id);
     }
 
     @Override
     public void batchDelete(List<Integer> ids) {
         bookingMapper.batchDelete(ids);
+        if (ids != null) {
+            for (Integer id : ids) {
+                bookingCacheManager.evictAfterBookingMutation(id);
+            }
+        }
     }
 
     @Override
@@ -343,7 +384,11 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public int userRequestCancel(Integer bookingId, Integer userId) {
-        return bookingMapper.userRequestCancelBooking(bookingId, userId);
+        int n = bookingMapper.userRequestCancelBooking(bookingId, userId);
+        if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
+        }
+        return n;
     }
 
     @Override
@@ -355,7 +400,11 @@ public class BookingServiceImpl implements BookingService {
         if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu")) {
             return 0;
         }
-        return bookingMapper.userPayBooking(bookingId, userId, c);
+        int n = bookingMapper.userPayBooking(bookingId, userId, c);
+        if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
+        }
+        return n;
     }
 
     @Override
@@ -367,7 +416,11 @@ public class BookingServiceImpl implements BookingService {
         if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu")) {
             return 0;
         }
-        return bookingMapper.userClaimPaidBooking(bookingId, userId, c);
+        int n = bookingMapper.userClaimPaidBooking(bookingId, userId, c);
+        if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
+        }
+        return n;
     }
 
     @Override
@@ -384,6 +437,7 @@ public class BookingServiceImpl implements BookingService {
     public int adminApproveCancel(Integer bookingId) {
         int n = bookingMapper.adminApproveCancelBooking(bookingId);
         if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
             BookingVO vo = bookingMapper.findById(bookingId);
             if (vo != null && vo.getUserId() != null) {
                 bookingNotificationPublisher.notifyCancelRequestResult(vo.getUserId(), bookingId, true);
@@ -396,6 +450,7 @@ public class BookingServiceImpl implements BookingService {
     public int adminRejectCancel(Integer bookingId) {
         int n = bookingMapper.adminRejectCancelBooking(bookingId);
         if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
             BookingVO vo = bookingMapper.findById(bookingId);
             if (vo != null && vo.getUserId() != null) {
                 bookingNotificationPublisher.notifyCancelRequestResult(vo.getUserId(), bookingId, false);
@@ -408,6 +463,7 @@ public class BookingServiceImpl implements BookingService {
     public int adminApprovePaymentVerify(Integer bookingId) {
         int n = bookingMapper.adminApprovePaymentVerify(bookingId);
         if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
             BookingVO vo = bookingMapper.findById(bookingId);
             if (vo != null && vo.getUserId() != null) {
                 bookingNotificationPublisher.notifyPaymentVerifyResult(vo.getUserId(), bookingId, true);
@@ -420,6 +476,7 @@ public class BookingServiceImpl implements BookingService {
     public int adminRejectPaymentVerify(Integer bookingId) {
         int n = bookingMapper.adminRejectPaymentVerify(bookingId);
         if (n > 0) {
+            bookingCacheManager.evictAfterBookingMutation(bookingId);
             BookingVO vo = bookingMapper.findById(bookingId);
             if (vo != null && vo.getUserId() != null) {
                 bookingNotificationPublisher.notifyPaymentVerifyResult(vo.getUserId(), bookingId, false);

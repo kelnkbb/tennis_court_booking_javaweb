@@ -12,9 +12,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class BookingWsNotification {
 
-    /** PAYMENT_VERIFY_APPROVED | PAYMENT_VERIFY_REJECTED | CANCEL_REQUEST_APPROVED | CANCEL_REQUEST_REJECTED */
+    /** PAYMENT_VERIFY_* | CANCEL_REQUEST_* | COUPON_ACTIVITY_PUBLISHED */
     private String type;
     private Integer bookingId;
+    /** 秒杀活动 ID（仅 COUPON_ACTIVITY_PUBLISHED 时有值） */
+    private Integer activityId;
     private String title;
     private String message;
 }

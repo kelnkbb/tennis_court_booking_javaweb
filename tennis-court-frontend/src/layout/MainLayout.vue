@@ -35,6 +35,14 @@
             <span class="icon">📈</span>
             场地统计
           </router-link>
+          <router-link to="/admin/coupons" class="nav-item" active-class="active">
+            <span class="icon">🎫</span>
+            秒杀券管理
+          </router-link>
+          <router-link to="/coupons" class="nav-item" active-class="active">
+            <span class="icon">🎯</span>
+            优惠券秒杀
+          </router-link>
         </template>
 
         <!-- 普通用户菜单：首页、我的预订、场地列表 -->
@@ -50,6 +58,10 @@
           <router-link to="/courts" class="nav-item" active-class="active">
             <span class="icon">🎾</span>
             场地列表
+          </router-link>
+          <router-link to="/coupons" class="nav-item" active-class="active">
+            <span class="icon">🎫</span>
+            优惠券秒杀
           </router-link>
         </template>
       </nav>
@@ -277,7 +289,9 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { h } from 'vue'
 import { ArrowDown, User, Lock, SwitchButton, ChatDotRound, Close } from '@element-plus/icons-vue'
+import { ElNotification, ElButton } from 'element-plus'
 import { logout, changePassword, getCurrentUser } from '@/api/auth'
 import { aiSimpleChat, aiAsyncChat, getAiTaskStatus } from '@/api/ai'
 import { renderAssistantMarkdown } from '@/utils/renderMarkdown'
@@ -566,7 +580,9 @@ const currentRoute = computed(() => {
     'MyBookings': '我的预订',
     'UserManagement': '用户管理',
     'UserStats': '用户统计',
-    'CourtStats': '场地统计'
+    'CourtStats': '场地统计',
+    'AdminCouponActivities': '秒杀券管理',
+    'CouponSeckill': '优惠券秒杀'
   }
   return routeNames[route.name] || '网球场地管理系统'
 })
@@ -733,6 +749,25 @@ watch(() => route.path, () => {
 })
 
 const handleBookingWsMessage = (data) => {
+  const t = data?.type
+  if (t === 'COUPON_ACTIVITY_PUBLISHED') {
+    ElNotification({
+      title: data?.title || '新秒杀优惠券',
+      message: h('div', { class: 'ws-coupon-notify' }, [
+        h('p', { style: 'margin:0 0 10px;font-size:14px;line-height:1.5;color:#606266' }, data?.message || ''),
+        h(ElButton, {
+          type: 'primary',
+          size: 'small',
+          onClick: () => {
+            router.push('/coupons')
+          }
+        }, () => '去抢购')
+      ]),
+      duration: 12000,
+      type: 'success'
+    })
+    return
+  }
   const title = data?.title || '预约通知'
   const body = data?.message || ''
   ElMessage.success({ message: `${title}${body ? '：' + body : ''}`, duration: 6500, showClose: true })

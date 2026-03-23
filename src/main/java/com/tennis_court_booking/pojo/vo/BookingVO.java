@@ -24,6 +24,12 @@ public class BookingVO {
     private BigDecimal duration;
     private BigDecimal unitPrice;
     private BigDecimal totalAmount;
+    /** 使用的优惠券码 */
+    private String couponCode;
+    /** 抵扣金额 */
+    private BigDecimal couponDiscount;
+    /** 应付（实付） */
+    private BigDecimal payAmount;
     private String contactName;
     private String contactPhone;
     private String remark;

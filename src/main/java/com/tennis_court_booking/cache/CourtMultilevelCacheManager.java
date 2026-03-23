@@ -5,6 +5,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.tennis_court_booking.cache.compensation.CourtCacheConsistencyHandler;
+import com.tennis_court_booking.cache.service.CacheEvictCompensationPublisher;
+import com.tennis_court_booking.cache.template.RedisLogicalExpireTemplate;
 import com.tennis_court_booking.config.CacheExecutorConfig;
 import com.tennis_court_booking.pojo.entity.Court;
 import lombok.extern.slf4j.Slf4j;
@@ -26,12 +29,14 @@ import java.util.stream.Collectors;
 /**
  * 场地读路径多级缓存（Caffeine L1 + Redis L2）与热点追踪（Redis ZSet + Set）。
  * 写路径由业务在改库后调用 {@link #evictAfterCourtMutation(Integer)}。
+ * 若 Redis 删除失败，则通过 MQ 发补偿消息重试；同时 Redis TTL 作为兜底。
  */
 @Slf4j
 @Component
 public class CourtMultilevelCacheManager {
 
     private static final String REDIS_COURT_PREFIX = "tennis:cache:court:";
+    private static final String REDIS_COURT_REBUILD_LOCK_PREFIX = "tennis:cache:rebuild:lock:court:";
     private static final String REDIS_LIST_ALL = "tennis:cache:court:list:all";
     /** ZSet：member=场地 id，score=访问热度 */
     private static final String REDIS_ZSET_HEAT = "tennis:hot:court:heat";
@@ -39,6 +44,13 @@ public class CourtMultilevelCacheManager {
     private static final String REDIS_SET_HOT_IDS = "tennis:hot:court:ids";
 
     private static final Duration LOCAL_TTL = Duration.ofMinutes(5);
+    private static final RedisLogicalExpireTemplate.CacheOptions COURT_CACHE_OPTIONS =
+            new RedisLogicalExpireTemplate.CacheOptions(
+                    TimeUnit.MINUTES.toSeconds(10),
+                    TimeUnit.HOURS.toSeconds(1),
+                    TimeUnit.MINUTES.toSeconds(2),
+                    20
+            );
     private static final long REDIS_TTL_SECONDS = TimeUnit.MINUTES.toSeconds(10);
     private static final int LOCAL_MAX_SINGLE_COURTS = 512;
     /** ZSet 超过该规模则裁剪掉低分 member，只保留 HOT_KEEP 个 */
@@ -49,6 +61,8 @@ public class CourtMultilevelCacheManager {
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final Executor cacheTaskExecutor;
+    private final CacheEvictCompensationPublisher cacheEvictCompensationPublisher;
+    private final RedisLogicalExpireTemplate redisLogicalExpireTemplate;
 
     private Cache<Integer, Court> localById;
     private Cache<String, List<Court>> localListAll;
@@ -56,10 +70,14 @@ public class CourtMultilevelCacheManager {
     public CourtMultilevelCacheManager(
             StringRedisTemplate stringRedisTemplate,
             ObjectMapper objectMapper,
-            @Qualifier(CacheExecutorConfig.CACHE_TASK_EXECUTOR) Executor cacheTaskExecutor) {
+            @Qualifier(CacheExecutorConfig.CACHE_TASK_EXECUTOR) Executor cacheTaskExecutor,
+            CacheEvictCompensationPublisher cacheEvictCompensationPublisher,
+            RedisLogicalExpireTemplate redisLogicalExpireTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
         this.cacheTaskExecutor = cacheTaskExecutor;
+        this.cacheEvictCompensationPublisher = cacheEvictCompensationPublisher;
+        this.redisLogicalExpireTemplate = redisLogicalExpireTemplate;
     }
 
     @PostConstruct
@@ -84,24 +102,19 @@ public class CourtMultilevelCacheManager {
             recordHeatAsync(id);
             return hit;
         }
-        String json = stringRedisTemplate.opsForValue().get(REDIS_COURT_PREFIX + id);
-        if (json != null) {
-            Court c = readCourt(json);
-            if (c != null) {
-                log.debug("[CourtCache] getCourt id={} -> L2_Redis_HIT，回写L1", id);
-                localById.put(id, c);
-                recordHeatAsync(id);
-                return c;
-            }
-        }
-        log.debug("[CourtCache] getCourt id={} -> DB_LOAD", id);
-        Court fromDb = dbLoader.get();
-        if (fromDb != null) {
-            writeCourtToRedis(id, fromDb);
-            localById.put(id, fromDb);
+        Court fromCacheOrDb = redisLogicalExpireTemplate.queryObject(
+                REDIS_COURT_PREFIX + id,
+                REDIS_COURT_REBUILD_LOCK_PREFIX,
+                Court.class,
+                dbLoader,
+                cacheTaskExecutor,
+                COURT_CACHE_OPTIONS
+        );
+        if (fromCacheOrDb != null) {
+            localById.put(id, fromCacheOrDb);
             recordHeatAsync(id);
         }
-        return fromDb;
+        return fromCacheOrDb;
     }
 
     public List<Court> findAllCourts(Supplier<List<Court>> dbLoader) {
@@ -125,7 +138,10 @@ public class CourtMultilevelCacheManager {
         if (fromDb != null) {
             try {
                 stringRedisTemplate.opsForValue().set(
-                        REDIS_LIST_ALL, objectMapper.writeValueAsString(fromDb), REDIS_TTL_SECONDS, TimeUnit.SECONDS);
+                        REDIS_LIST_ALL,
+                        Objects.requireNonNull(objectMapper.writeValueAsString(fromDb)),
+                        REDIS_TTL_SECONDS,
+                        TimeUnit.SECONDS);
             } catch (JsonProcessingException e) {
                 log.warn("Redis 写入全量场地列表失败", e);
             }
@@ -162,16 +178,43 @@ public class CourtMultilevelCacheManager {
     public void evictAfterCourtMutation(Integer id) {
         if (id != null) {
             localById.invalidate(id);
-            stringRedisTemplate.delete(REDIS_COURT_PREFIX + id);
         }
         localListAll.invalidateAll();
-        stringRedisTemplate.delete(REDIS_LIST_ALL);
+        boolean ok = evictRedisAfterCourtMutation(id);
+        if (!ok) {
+            // 首次补偿 attempt=1
+            cacheEvictCompensationPublisher.publishEvictRetry(
+                    CourtCacheConsistencyHandler.BIZ_TYPE,
+                    id == null ? null : String.valueOf(id),
+                    1);
+        }
+    }
+
+    /**
+     * 仅删除 Redis 侧缓存（补偿消费者调用）。
+     *
+     * @return true 表示删除成功；false 表示删除失败可继续补偿重试
+     */
+    public boolean evictRedisAfterCourtMutation(Integer id) {
+        try {
+            if (id != null) {
+                stringRedisTemplate.delete(REDIS_COURT_PREFIX + id);
+            }
+            stringRedisTemplate.delete(REDIS_LIST_ALL);
+            return true;
+        } catch (Exception e) {
+            log.warn("删除场地缓存失败 courtId={}，将走补偿重试", id, e);
+            return false;
+        }
     }
 
     private void recordHeatAsync(Integer courtId) {
+        if (courtId == null) {
+            return;
+        }
         cacheTaskExecutor.execute(() -> {
             try {
-                stringRedisTemplate.opsForZSet().incrementScore(REDIS_ZSET_HEAT, courtId.toString(), 1);
+                stringRedisTemplate.opsForZSet().incrementScore(REDIS_ZSET_HEAT, Objects.requireNonNull(courtId.toString()), 1);
                 Long zcard = stringRedisTemplate.opsForZSet().size(REDIS_ZSET_HEAT);
                 if (zcard != null && zcard > ZSET_TRIM_THRESHOLD) {
                     long toRemove = zcard - HOT_KEEP;
@@ -194,29 +237,16 @@ public class CourtMultilevelCacheManager {
                 return;
             }
             stringRedisTemplate.delete(REDIS_SET_HOT_IDS);
-            stringRedisTemplate.opsForSet().add(REDIS_SET_HOT_IDS, top.toArray(new String[0]));
+            String[] members = top.stream().filter(Objects::nonNull).toArray(String[]::new);
+            if (members.length > 0) {
+                stringRedisTemplate.opsForSet().add(REDIS_SET_HOT_IDS, members);
+            }
             stringRedisTemplate.expire(REDIS_SET_HOT_IDS, REDIS_TTL_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.debug("刷新热点 Set 失败", e);
         }
     }
 
-    private void writeCourtToRedis(Integer id, Court c) {
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    REDIS_COURT_PREFIX + id, objectMapper.writeValueAsString(c), REDIS_TTL_SECONDS, TimeUnit.SECONDS);
-        } catch (JsonProcessingException e) {
-            log.warn("Redis 写入场地失败 id={}", id, e);
-        }
-    }
-
-    private Court readCourt(String json) {
-        try {
-            return objectMapper.readValue(json, Court.class);
-        } catch (JsonProcessingException e) {
-            return null;
-        }
-    }
 
     private List<Court> readCourtList(String json) {
         try {
@@ -233,4 +263,5 @@ public class CourtMultilevelCacheManager {
             return null;
         }
     }
+
 }

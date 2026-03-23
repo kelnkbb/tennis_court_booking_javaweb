@@ -8,6 +8,8 @@ import UserManagement from '../views/UserManagement.vue'
 import UserStats from '../views/UserStats.vue'
 import CourtStats from '../views/CourtStats.vue'
 import Login from '../views/Login.vue'
+import AdminCouponActivities from '../views/AdminCouponActivities.vue'
+import CouponSeckill from '../views/CouponSeckill.vue'
 
 
 
@@ -61,6 +63,18 @@ const routes = [
         path: '/stats/court',
         name: 'CourtStats',
         component: CourtStats
+      },
+      {
+        path: '/admin/coupons',
+        name: 'AdminCouponActivities',
+        component: AdminCouponActivities,
+        meta: { requiresAdmin: true }
+      },
+      {
+        path: '/coupons',
+        name: 'CouponSeckill',
+        component: CouponSeckill,
+        meta: { requiresAuth: false }
       }
     ]
   }
@@ -71,25 +85,42 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
+// 路由守卫（子路由 meta.requiresAuth === false 可覆盖父级，用于 /coupons 等半公开页）
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
 
+  if (to.path === '/login') {
+    if (token) next('/home')
+    else next()
+    return
+  }
+
+  const leaf = to.matched[to.matched.length - 1]
+  if (leaf?.meta?.requiresAuth === false) {
+    next()
+    return
+  }
+
   if (to.matched.some(record => record.meta.requiresAuth)) {
-    // 需要登录的页面
     if (!token) {
       next('/login')
-    } else {
-      next()
+      return
     }
-  } else {
-    // 不需要登录的页面（如登录页）
-    if (to.path === '/login' && token) {
-      next('/home')
-    } else {
-      next()
+    if (to.matched.some(record => record.meta.requiresAdmin)) {
+      const userStr = localStorage.getItem('user')
+      let role = null
+      try {
+        role = userStr ? JSON.parse(userStr).role : null
+      } catch {
+        role = null
+      }
+      if (Number(role) !== 2) {
+        next('/home')
+        return
+      }
     }
   }
+  next()
 })
 
 export default router

@@ -148,13 +148,15 @@
         INSERT INTO booking (
             booking_no, court_id, user_id, booking_date,
             start_time, end_time, duration, unit_price,
-            total_amount, contact_name, contact_phone,
+            total_amount, coupon_code, coupon_discount, pay_amount,
+            contact_name, contact_phone,
             remark, status, cancel_request_status, payment_channel, pay_time, payment_verify_status,
             create_time, update_time
         ) VALUES (
                      #{bookingNo}, #{courtId}, #{userId}, #{bookingDate},
                      #{startTime}, #{endTime}, #{duration}, #{unitPrice},
-                     #{totalAmount}, #{contactName}, #{contactPhone},
+                     #{totalAmount}, #{couponCode}, #{couponDiscount}, #{payAmount},
+                     #{contactName}, #{contactPhone},
                      #{remark}, #{status},
                      IFNULL(#{cancelRequestStatus}, 0), #{paymentChannel}, #{payTime},
                      IFNULL(#{paymentVerifyStatus}, 0),
@@ -173,6 +175,9 @@
             duration = #{duration},
             unit_price = #{unitPrice},
             total_amount = #{totalAmount},
+            coupon_code = #{couponCode},
+            coupon_discount = #{couponDiscount},
+            pay_amount = #{payAmount},
             contact_name = #{contactName},
             contact_phone = #{contactPhone},
             remark = #{remark},

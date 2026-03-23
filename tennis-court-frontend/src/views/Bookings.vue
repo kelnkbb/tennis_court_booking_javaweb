@@ -91,7 +91,11 @@
             {{ row.bookingDate }} {{ row.startTime }} - {{ row.endTime }}
           </template>
         </el-table-column>
-        <el-table-column prop="totalAmount" label="金额(元)" width="90" align="right" />
+        <el-table-column label="应付(元)" width="100" align="right">
+          <template #default="{ row }">
+            <span class="price">¥{{ displayPayAmount(row) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="success" size="small" @click="handleApprovePaymentVerify(row)">确认已收款</el-button>
@@ -113,7 +117,11 @@
             {{ row.bookingDate }} {{ row.startTime }} - {{ row.endTime }}
           </template>
         </el-table-column>
-        <el-table-column prop="totalAmount" label="金额(元)" width="90" align="right" />
+        <el-table-column label="应付(元)" width="100" align="right">
+          <template #default="{ row }">
+            <span class="price">¥{{ displayPayAmount(row) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="success" size="small" @click="handleApproveCancel(row)">通过取消</el-button>
@@ -180,9 +188,15 @@
           </template>
         </el-table-column>
         <el-table-column prop="duration" label="时长(小时)" width="100" align="center" />
-        <el-table-column prop="totalAmount" label="金额(元)" width="120" align="right">
+        <el-table-column label="金额" min-width="150" align="right">
           <template #default="{ row }">
-            <span class="price">¥{{ row.totalAmount }}</span>
+            <div class="booking-amount-cell">
+              <span>原价 ¥{{ row.totalAmount }}</span>
+              <template v-if="hasCouponDiscount(row)">
+                <br /><span class="amount-discount">抵扣 ¥{{ row.couponDiscount }}</span>
+              </template>
+              <br /><span class="price">应付 ¥{{ displayPayAmount(row) }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="contactName" label="联系人" width="100" />
@@ -274,8 +288,14 @@
           <el-descriptions-item label="时间段">{{ currentBooking.startTime }} - {{ currentBooking.endTime }}</el-descriptions-item>
           <el-descriptions-item label="时长">{{ currentBooking.duration }} 小时</el-descriptions-item>
           <el-descriptions-item label="单价">¥{{ currentBooking.unitPrice }}</el-descriptions-item>
-          <el-descriptions-item label="总金额" :span="2">
+          <el-descriptions-item label="原价" :span="2">
             <span class="price">¥{{ currentBooking.totalAmount }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="hasCouponDiscount(currentBooking)" label="券抵扣" :span="2">
+            ¥{{ currentBooking.couponDiscount }}（券码 {{ currentBooking.couponCode || '-' }}）
+          </el-descriptions-item>
+          <el-descriptions-item label="应付金额" :span="2">
+            <span class="price">¥{{ displayPayAmount(currentBooking) }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="联系人">{{ currentBooking.contactName }}</el-descriptions-item>
           <el-descriptions-item label="联系电话">{{ currentBooking.contactPhone }}</el-descriptions-item>
@@ -303,7 +323,7 @@
         @close="onPayMethodDialogClose"
     >
       <div v-if="payTarget" class="pay-dialog-body">
-        <p class="pay-order-info">订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ payTarget.totalAmount }}</span></p>
+        <p class="pay-order-info">订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ displayPayAmount(payTarget) }}</span></p>
         <el-radio-group v-model="payChannel" class="pay-channel-group">
           <el-radio label="wechat" border>微信支付</el-radio>
           <el-radio label="alipay" border>支付宝</el-radio>
@@ -331,7 +351,7 @@
     >
       <div class="pay-qr-body">
         <p v-if="payTarget" class="pay-order-info">
-          订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ payTarget.totalAmount }}</span>
+          订单 {{ payTarget.bookingNo }}，应付 <span class="price">¥{{ displayPayAmount(payTarget) }}</span>
         </p>
         <img :src="payQrImageMap[payChannel]" :alt="`${payChannelLabel(payChannel)}收款码`" class="pay-qr-image" />
         <p class="pay-tip">请使用{{ payChannelLabel(payChannel) }}扫码付款。</p>
@@ -441,6 +461,27 @@
           />
         </el-form-item>
 
+        <!-- 优惠券（仅新增） -->
+        <el-form-item v-if="!currentEditBooking" label="优惠券">
+          <el-select
+              v-model="formData.couponCode"
+              filterable
+              clearable
+              allow-create
+              default-first-option
+              placeholder="可选：从列表选择或输入券码"
+              style="width: 100%"
+          >
+            <el-option
+                v-for="c in unusedCoupons"
+                :key="c.couponCode"
+                :label="`${c.activityTitle || '优惠券'} ¥${formatCouponFace(c.discountAmount)}`"
+                :value="c.couponCode"
+            />
+          </el-select>
+          <p v-if="unusedCouponsHint" class="slot-cap-hint">{{ unusedCouponsHint }}</p>
+        </el-form-item>
+
         <!-- 状态（编辑时显示） -->
         <el-form-item v-if="currentEditBooking" label="状态" prop="status">
           <el-radio-group v-model="formData.status">
@@ -457,7 +498,12 @@
           <div class="amount-info">
             <p>单价：¥{{ unitPrice }}</p>
             <p>时长：{{ duration }} 小时</p>
-            <p class="total-amount">总计：¥{{ totalAmount }}</p>
+            <p class="total-amount">原价：¥{{ totalAmount }}</p>
+            <template v-if="!currentEditBooking && formData.couponCode">
+              <p v-if="couponEstimateDiscount != null">抵扣：¥{{ couponEstimateDiscount.toFixed(2) }}</p>
+              <p v-else class="slot-cap-hint">抵扣金额以下单结果为准（手动输入券码时无法预估）</p>
+              <p class="total-amount">预估应付：¥{{ estimatedPayAmount }}</p>
+            </template>
           </div>
         </el-form-item>
       </el-form>
@@ -488,6 +534,7 @@ import { getAllBookings, getMyBookings, searchBookings, addBooking, updateBookin
   adminApprovePaymentVerifyBooking, adminRejectPaymentVerifyBooking } from '@/api/booking'
 import { getAllCourts } from '@/api/court'
 import { getUserList } from '@/api/user'
+import { getMyUnusedCoupons } from '@/api/coupon'
 
 const route = useRoute()
 
@@ -543,8 +590,32 @@ const formData = reactive({
   contactName: '',
   contactPhone: '',
   remark: '',
-  status: 1
+  status: 1,
+  couponCode: ''
 })
+
+const unusedCoupons = ref([])
+const unusedCouponsHint = ref('')
+
+const formatCouponFace = (v) => {
+  if (v == null || v === '') return '-'
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toFixed(2) : String(v)
+}
+
+/** 列表/详情/付款弹窗：应付金额（无券或未迁移时退回原价） */
+const displayPayAmount = (row) => {
+  if (!row) return ''
+  const p = row.payAmount
+  if (p != null && p !== '') return p
+  return row.totalAmount
+}
+
+const hasCouponDiscount = (row) => {
+  if (!row) return false
+  const d = Number(row.couponDiscount)
+  return Number.isFinite(d) && d > 0
+}
 
 const slotOptions = ref([])
 const slotLoading = ref(false)
@@ -690,6 +761,24 @@ const unitPrice = computed(() => {
 const totalAmount = computed(() => {
   const d = parseFloat(duration.value) || 0
   return (unitPrice.value * d).toFixed(2)
+})
+
+/** 从「我的未使用券」选中时可预估抵扣；手动输入券码则为 null */
+const couponEstimateDiscount = computed(() => {
+  if (!formData.couponCode) return null
+  const total = parseFloat(totalAmount.value) || 0
+  const c = unusedCoupons.value.find(x => x.couponCode === formData.couponCode)
+  if (!c) return null
+  const face = Number(c.discountAmount)
+  if (!Number.isFinite(face)) return null
+  return Math.min(face, total)
+})
+
+const estimatedPayAmount = computed(() => {
+  const total = parseFloat(totalAmount.value) || 0
+  const d = couponEstimateDiscount.value
+  if (d == null) return total.toFixed(2)
+  return Math.max(0, total - d).toFixed(2)
 })
 
 const slotCapHint = computed(() => {
@@ -1057,8 +1146,22 @@ const handleViewBooking = (row) => {
   detailVisible.value = true
 }
 
+const loadMyUnusedCoupons = async () => {
+  unusedCouponsHint.value = ''
+  unusedCoupons.value = []
+  if (!currentUser.value?.id) return
+  try {
+    const res = await getMyUnusedCoupons()
+    if (res.code === 200 && Array.isArray(res.data)) {
+      unusedCoupons.value = res.data
+    }
+  } catch (e) {
+    unusedCouponsHint.value = '未使用券列表加载失败，仍可手动输入券码下单'
+  }
+}
+
 // 新增预约（可选带入场地ID）
-const handleAddBooking = (courtId = null) => {
+const handleAddBooking = async (courtId = null) => {
   currentEditBooking.value = null
   formTitle.value = '新增预约'
   resetForm()
@@ -1074,6 +1177,7 @@ const handleAddBooking = (courtId = null) => {
   }
   selectedSlots.value = []
   formVisible.value = true
+  await loadMyUnusedCoupons()
 }
 
 // 编辑预约
@@ -1248,6 +1352,10 @@ const handleFormConfirm = async () => {
           remark: formData.remark || '',
           status: formData.status
         }
+        if (!currentEditBooking.value) {
+          const cc = formData.couponCode && String(formData.couponCode).trim()
+          if (cc) submitData.couponCode = cc
+        }
 
         console.log('提交数据:', submitData)
 
@@ -1296,6 +1404,8 @@ const resetForm = () => {
   formData.contactPhone = ''
   formData.remark = ''
   formData.status = 1
+  formData.couponCode = ''
+  unusedCouponsHint.value = ''
   slotOptions.value = []
 }
 
@@ -1489,6 +1599,16 @@ onMounted(async () => {
 .price {
   color: #f59e0b;
   font-weight: 600;
+}
+
+.booking-amount-cell {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.amount-discount {
+  color: var(--el-color-success);
 }
 
 .detail-container {

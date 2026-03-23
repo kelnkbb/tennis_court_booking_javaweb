@@ -104,6 +104,11 @@ ai:
     compensation:
       max-attempts: 5
 
+# 缓存一致性补偿：改库后删缓存失败时，通过 MQ 重试次数上限（TTL 仍作为最终兜底）
+cache:
+  consistency:
+    max-attempts: 5
+
 # jwt配置
 jwt:
   secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970

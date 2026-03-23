@@ -66,6 +66,21 @@ public class Booking {
     private BigDecimal totalAmount;
 
     /**
+     * 使用的秒杀优惠券码（可选）
+     */
+    private String couponCode;
+
+    /**
+     * 本单优惠券抵扣金额
+     */
+    private BigDecimal couponDiscount;
+
+    /**
+     * 应付金额（实付）= totalAmount - couponDiscount
+     */
+    private BigDecimal payAmount;
+
+    /**
      * 联系人姓名
      */
     private String contactName;

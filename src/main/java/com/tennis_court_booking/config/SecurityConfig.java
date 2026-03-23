@@ -60,6 +60,7 @@ public class SecurityConfig {
                 // 配置请求授权
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/login", "/api/register").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/coupons/activities").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // WebSocket 握手：JWT 在查询参数 token，由握手拦截器校验
                         .requestMatchers("/api/ws/**").permitAll()
