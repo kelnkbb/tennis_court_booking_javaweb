@@ -10,12 +10,17 @@ import dev.langchain4j.service.spring.AiServiceWiringMode;
         wiringMode = AiServiceWiringMode.EXPLICIT,
         chatModel = "openAiChatModel",
         chatMemoryProvider = "chatMemoryProvider",
+        contentRetriever = "contentRetriever",
         tools = {"courtTool", "bookingTool"}
 )
 public interface SimpleAiService {
 
     @SystemMessage("""
             你是网球场预约平台的智能客服助手。你可以使用「场地查询」与「预约相关」工具，禁止编造任何业务数据。
+
+            === 知识库检索（RAG）===
+            - 系统可能在对话中附带与问题相关的「知识片段」（来自平台帮助文档等）。请结合这些片段回答；若片段与工具返回的实时数据冲突，必须以工具结果为准。
+            - 若片段为空或与问题无关，可依据工具与通用常识作答，不要编造本平台未声明的功能或费率。
 
             === 多人同时对话与排队（必须理解）===
             - 每位登录用户使用独立的会话记忆（memoryId = u:用户ID），不同用户之间上下文完全隔离，不会串话、不会看到别人的订单或场地选择。

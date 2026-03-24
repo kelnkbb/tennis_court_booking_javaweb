@@ -15,12 +15,11 @@
 | 模块 | 说明 |
 |------|------|
 | 用户与认证 | 注册 / 登录、JWT、修改密码、角色（普通用户 / 管理员） |
-| 场地 | 场地 CRUD、多级缓存（Caffeine + Redis）减轻读压力；改库后删缓存，失败走统一缓存一致性组件（MQ 补偿重试 + TTL 兜底） |
+| 场地 | 场地 CRUD、多级缓存（Caffeine + Redis）减轻读压力 |
 | 预约与订单 | 创建预约、时间冲突与每日时长校验、订单状态、取消申请、线下支付渠道与付款确认审核 |
 | 统计 | 用户维度 / 场地维度预约统计（管理员） |
 | AI 客服 | 同步对话、异步任务（MQ + Redis 轮询）、死信与补偿重投、会话记忆 Redis 持久化 |
 | 实时通知 | WebSocket：付款确认 / 取消申请审核结果推送给用户 |
-| 秒杀优惠券 | Redis 库存 + **Lua** 原子扣减与一人一单，落库券码；管理员发布活动时初始化库存 |
 
 ---
 
@@ -197,7 +196,6 @@ flowchart LR
 |------|------|
 | `docs/AI_RABBITMQ_ASYNC.md` | AI 异步队列、任务状态、死信与补偿 |
 | `docs/WEBSOCKET_BOOKING_NOTIFICATIONS.md` | WebSocket 预约/付款通知 |
-| `docs/COUPON_SECKILL.md` | 秒杀优惠券（Redis + Lua） |
 
 ---
 

@@ -4,6 +4,7 @@ spring:
 
 
 
+
   # 统一强制 UTF-8，避免中文在反向代理/浏览器解析时出现乱码
   # 数据库配置
   datasource:
@@ -98,12 +99,6 @@ server:
       enabled: true
       force: true
 
-# AI 异步任务补偿（DEAD/FAILED 重投次数上限，含用户与管理员触发）
-ai:
-  chat:
-    compensation:
-      max-attempts: 5
-
 # 缓存一致性补偿：改库后删缓存失败时，通过 MQ 重试次数上限（TTL 仍作为最终兜底）
 cache:
   consistency:
@@ -123,4 +118,25 @@ langchain4j:
       model-name: qwen-plus
       log-requests: true
       log-responses: true
+    # RAG 向量化：与 chat 同兼容网关；模型需与 ai.rag.embedding-dimension 一致（text-embedding-v2 为 1536 维）
+    embedding-model:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${AI_API_KEY:sk-6a0bd6c2051d4976a7f31be7cf701bb8}
+      model-name: text-embedding-v2
 
+# RAG 知识库：classpath:rag/*.md 启动时入库；管理员可 POST /api/admin/ai/rag/reindex 全量重建
+ai:
+  rag:
+    enabled: true
+    store: memory
+    embedding-dimension: 1536
+    redis-index-name: tennis_rag_kb
+    max-retrieve-results: 5
+    min-retrieve-score: 0.55
+    max-segment-chars: 480
+    segment-overlap-chars: 60
+    load-on-startup: true
+# AI 异步任务补偿（DEAD/FAILED 重投次数上限，含用户与管理员触发）
+  chat:
+    compensation:
+      max-attempts: 5
