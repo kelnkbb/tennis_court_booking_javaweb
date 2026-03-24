@@ -13,17 +13,20 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final NotificationWebSocketHandler notificationWebSocketHandler;
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
+    private final CorsProperties corsProperties;
 
     public WebSocketConfig(NotificationWebSocketHandler notificationWebSocketHandler,
-                          JwtHandshakeInterceptor jwtHandshakeInterceptor) {
+                          JwtHandshakeInterceptor jwtHandshakeInterceptor,
+                          CorsProperties corsProperties) {
         this.notificationWebSocketHandler = notificationWebSocketHandler;
         this.jwtHandshakeInterceptor = jwtHandshakeInterceptor;
+        this.corsProperties = corsProperties;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(notificationWebSocketHandler, "/api/ws/notifications")
                 .addInterceptors(jwtHandshakeInterceptor)
-                .setAllowedOrigins("http://localhost:5173", "http://127.0.0.1:5173");
+                .setAllowedOrigins(corsProperties.originArray());
     }
 }
