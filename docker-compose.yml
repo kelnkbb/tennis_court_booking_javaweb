@@ -1,23 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: tennis-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: tennis-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-
   mysql:
     image: mysql:8.0
     container_name: tennis-mysql
@@ -45,18 +26,10 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      redis:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tennisbooking?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_RABBITMQ_HOST: rabbitmq
-      # 与 Vercel 前端联调时改为你的 https://xxx.vercel.app（逗号分隔多个 Origin）
-      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       TZ: Asia/Shanghai
     ports:
       - "8080:8080"
@@ -73,4 +46,3 @@ services:
 
 volumes:
   mysql_data:
-  redis_data:

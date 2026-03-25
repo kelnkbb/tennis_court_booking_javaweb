@@ -186,19 +186,26 @@
       </template>
     </el-dialog>
 
-    <!-- AI 客服：右下角入口 + 悬浮窗 -->
+    <!-- 在线客服：AI + 人工 同一悬浮窗，分段切换 -->
     <div class="ai-chat-widget" aria-live="polite">
       <transition name="ai-panel">
         <div v-show="aiPanelOpen" class="ai-chat-panel">
           <div class="ai-chat-header">
-            <span class="ai-chat-title">AI 客服</span>
-            <div class="ai-chat-header-actions">
-              <el-button text circle @click="aiPanelOpen = false" title="关闭">
-                <el-icon><close /></el-icon>
-              </el-button>
+            <div class="ai-chat-header-row">
+              <span class="ai-chat-title">在线客服</span>
+              <div class="ai-chat-header-actions">
+                <el-button text circle @click="aiPanelOpen = false" title="关闭">
+                  <el-icon><close /></el-icon>
+                </el-button>
+              </div>
             </div>
+            <el-radio-group v-model="supportTab" size="small" class="support-tabs">
+              <el-radio-button label="ai">AI 助手</el-radio-button>
+              <el-radio-button label="human">人工客服</el-radio-button>
+            </el-radio-group>
           </div>
-          <div ref="aiMessagesRef" class="ai-chat-messages">
+          <!-- AI -->
+          <div v-show="supportTab === 'ai'" ref="aiMessagesRef" class="ai-chat-messages">
             <div
               v-for="(m, i) in aiMessages"
               :key="i"
@@ -240,7 +247,7 @@
               <div class="ai-msg-bubble">正在思考…</div>
             </div>
           </div>
-          <div class="ai-chat-footer">
+          <div v-show="supportTab === 'ai'" class="ai-chat-footer">
             <el-input
               v-model="aiInput"
               type="textarea"
@@ -270,13 +277,70 @@
               </el-tag>
             </div>
           </div>
+          <!-- 人工客服 -->
+          <div v-show="supportTab === 'human'" class="human-panel-body">
+            <div v-if="isAdmin" class="human-admin-bar">
+              <el-select
+                v-model="adminCsConversationId"
+                placeholder="选择进行中的会话"
+                filterable
+                clearable
+                style="width: 100%"
+                @change="onAdminCsConversationChange"
+              >
+                <el-option
+                  v-for="c in adminCsConversations"
+                  :key="c.id"
+                  :label="`#${c.id} · 用户 ${c.userId}`"
+                  :value="c.id"
+                />
+              </el-select>
+              <el-button size="small" @click="loadAdminCsList">刷新</el-button>
+            </div>
+            <div ref="humanMessagesRef" class="ai-chat-messages human-chat-messages">
+              <div v-if="isAdmin && !adminCsConversations.length" class="human-empty-hint">
+                暂无进行中的会话，用户发起咨询后会出现在此处。
+              </div>
+              <div
+                v-for="m in humanMessages"
+                :key="m.id"
+                class="ai-msg"
+                :class="isSelfHuman(m) ? 'ai-msg-user' : 'ai-msg-assistant'"
+              >
+                <span class="ai-msg-label">{{ humanMsgLabel(m) }}</span>
+                <div class="ai-msg-bubble ai-msg-plain">{{ m.content }}</div>
+              </div>
+            </div>
+            <div class="ai-chat-footer">
+              <div v-if="humanWsHint" class="human-ws-hint">
+                {{ humanWsHint }}
+              </div>
+              <el-input
+                v-model="humanInput"
+                type="textarea"
+                :rows="2"
+                placeholder="输入消息，Enter 发送（Shift+Enter 换行）"
+                resize="none"
+                :disabled="!canSendHuman"
+                @keydown.enter.exact.prevent="submitHumanFromInput"
+              />
+              <el-button
+                type="primary"
+                class="ai-send-btn"
+                :disabled="!canSendHuman || !humanInput.trim()"
+                @click="submitHumanFromInput"
+              >
+                发送
+              </el-button>
+            </div>
+          </div>
         </div>
       </transition>
       <button
         type="button"
         class="ai-chat-fab"
         :class="{ 'ai-chat-fab--open': aiPanelOpen }"
-        :aria-label="aiPanelOpen ? '收起 AI 客服' : '打开 AI 客服'"
+        :aria-label="aiPanelOpen ? '收起在线客服' : '打开在线客服'"
         @click="toggleAiPanel"
       >
         <el-icon :size="aiPanelOpen ? 22 : 26"><chat-dot-round /></el-icon>
@@ -296,6 +360,12 @@ import { logout, changePassword, getCurrentUser } from '@/api/auth'
 import { aiSimpleChat, aiAsyncChat, getAiTaskStatus } from '@/api/ai'
 import { renderAssistantMarkdown } from '@/utils/renderMarkdown'
 import { connectBookingNotifications, disconnectBookingNotifications } from '@/utils/bookingNotificationWs'
+import { connectCsChat, disconnectCsChat, sendCsChatJson } from '@/utils/csChatWs'
+import {
+  getMyCsMessages,
+  listAdminCsConversations,
+  getAdminCsMessages
+} from '@/api/cs'
 
 const route = useRoute()
 const router = useRouter()
@@ -325,6 +395,9 @@ const passwordForm = ref({
 // 个人信息对话框
 const profileDialogVisible = ref(false)
 
+// 在线客服：AI / 人工 分段
+const supportTab = ref('ai')
+
 // AI 客服悬浮窗
 const aiPanelOpen = ref(false)
 const aiInput = ref('')
@@ -341,6 +414,201 @@ const aiMessages = ref([
   }
 ])
 
+// —— 人工客服（WebSocket + REST 历史）——
+const humanMessagesRef = ref(null)
+const humanMessages = ref([])
+const humanInput = ref('')
+/** 服务端 joined 之前为 false；之后为 true */
+const humanWsConnected = ref(false)
+/** WebSocket 已 onopen（响应式，勿用 ws.readyState 做 computed） */
+const humanWsTransportOpen = ref(false)
+const adminCsConversations = ref([])
+const adminCsConversationId = ref(null)
+
+const mapApiRow = (m) => ({
+  id: m.id,
+  senderType: m.senderType,
+  senderUserId: m.senderUserId,
+  content: m.content
+})
+
+const scrollHumanToBottom = () => {
+  nextTick(() => {
+    const el = humanMessagesRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+const humanMsgLabel = (m) => {
+  if (isAdmin.value) {
+    return m.senderType === 2 ? '我' : '用户'
+  }
+  return m.senderType === 1 ? '我' : '客服'
+}
+
+const isSelfHuman = (m) => {
+  if (isAdmin.value) return m.senderType === 2
+  return m.senderType === 1
+}
+
+const canSendHuman = computed(() => {
+  if (!localStorage.getItem('token')) return false
+  if (isAdmin.value && !adminCsConversationId.value) return false
+  return humanWsTransportOpen.value && humanWsConnected.value
+})
+
+const humanWsHint = computed(() => {
+  if (!localStorage.getItem('token')) return '请先登录后使用人工客服。'
+  if (isAdmin.value && !adminCsConversationId.value && adminCsConversations.value.length > 0) {
+    return '请选择要接入的会话。'
+  }
+  if (isAdmin.value && !adminCsConversations.value.length) return ''
+  if (!humanWsTransportOpen.value) return '正在连接服务器…'
+  if (!humanWsConnected.value) return '正在加入会话…'
+  return ''
+})
+
+const handleHumanWsJson = (data) => {
+  if (!data) return
+  if (data.type === 'joined') {
+    humanWsConnected.value = true
+    scrollHumanToBottom()
+    return
+  }
+  if (data.type === 'message') {
+    humanMessages.value.push({
+      id: data.id,
+      senderType: data.senderType,
+      senderUserId: data.senderUserId,
+      content: data.content
+    })
+    scrollHumanToBottom()
+    return
+  }
+  if (data.type === 'error') {
+    ElMessage.error(data.message || '错误')
+  }
+}
+
+const loadAdminCsList = async () => {
+  try {
+    const r = await listAdminCsConversations(50)
+    if (r.code === 200 && Array.isArray(r.data)) {
+      adminCsConversations.value = r.data
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const connectAdminHuman = async (id) => {
+  if (!id) {
+    disconnectCsChat()
+    humanMessages.value = []
+    humanWsConnected.value = false
+    return
+  }
+  try {
+    const r = await getAdminCsMessages(id, 200)
+    if (r.code === 200 && Array.isArray(r.data)) {
+      humanMessages.value = r.data.map(mapApiRow)
+    } else {
+      humanMessages.value = []
+    }
+  } catch (e) {
+    console.error(e)
+    humanMessages.value = []
+  }
+  humanWsConnected.value = false
+  humanWsTransportOpen.value = false
+  disconnectCsChat()
+  connectCsChat({
+    conversationId: id,
+    onJson: handleHumanWsJson,
+    onOpen: () => {
+      humanWsTransportOpen.value = true
+    },
+    onClose: () => {
+      humanWsTransportOpen.value = false
+      humanWsConnected.value = false
+    }
+  })
+}
+
+const onAdminCsConversationChange = async (id) => {
+  if (!aiPanelOpen.value || supportTab.value !== 'human') return
+  await connectAdminHuman(id)
+}
+
+const enterHumanTab = async () => {
+  if (!localStorage.getItem('token')) {
+    ElMessage.warning('请先登录后再使用人工客服')
+    return
+  }
+  humanWsConnected.value = false
+  humanWsTransportOpen.value = false
+  disconnectCsChat()
+
+  if (isAdmin.value) {
+    await loadAdminCsList()
+    if (!adminCsConversations.value.length) {
+      humanMessages.value = []
+      adminCsConversationId.value = null
+      return
+    }
+    if (adminCsConversationId.value == null) {
+      adminCsConversationId.value = adminCsConversations.value[0].id
+    }
+    await connectAdminHuman(adminCsConversationId.value)
+    return
+  }
+
+  try {
+    const r = await getMyCsMessages(100)
+    if (r.code === 200 && Array.isArray(r.data)) {
+      humanMessages.value = r.data.map(mapApiRow)
+    } else {
+      humanMessages.value = []
+    }
+  } catch (e) {
+    console.error(e)
+    humanMessages.value = []
+  }
+  connectCsChat({
+    conversationId: null,
+    onJson: handleHumanWsJson,
+    onOpen: () => {
+      humanWsTransportOpen.value = true
+    },
+    onClose: () => {
+      humanWsTransportOpen.value = false
+      humanWsConnected.value = false
+    }
+  })
+}
+
+const submitHumanFromInput = () => {
+  const t = humanInput.value.trim()
+  if (!t || !canSendHuman.value) return
+  humanInput.value = ''
+  sendCsChatJson({ type: 'chat', content: t })
+}
+
+watch(
+  () => [supportTab.value, aiPanelOpen.value],
+  async ([tab, open]) => {
+    if (!open || tab !== 'human') {
+      disconnectCsChat()
+      humanWsConnected.value = false
+      humanWsTransportOpen.value = false
+      return
+    }
+    await enterHumanTab()
+  }
+)
+
+watch(humanMessages, () => scrollHumanToBottom(), { deep: true })
+
 // 侧边栏折叠状态（移动端）
 const sidebarOpen = ref(false)
 
@@ -353,7 +621,12 @@ const scrollAiToBottom = () => {
 
 const toggleAiPanel = () => {
   aiPanelOpen.value = !aiPanelOpen.value
-  if (aiPanelOpen.value) scrollAiToBottom()
+  if (aiPanelOpen.value) {
+    nextTick(() => {
+      if (supportTab.value === 'ai') scrollAiToBottom()
+      else scrollHumanToBottom()
+    })
+  }
 }
 
 const toggleSidebar = () => {
@@ -690,6 +963,7 @@ const handleLogout = async (silent = false) => {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       disconnectBookingNotifications()
+      disconnectCsChat()
 
       ElMessage.success('已退出登录')
       router.push('/login')
@@ -699,6 +973,7 @@ const handleLogout = async (silent = false) => {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       disconnectBookingNotifications()
+      disconnectCsChat()
       router.push('/login')
     }
   }
@@ -788,6 +1063,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   disconnectBookingNotifications()
+  disconnectCsChat()
 })
 </script>
 
@@ -1060,17 +1336,78 @@ onUnmounted(() => {
 }
 
 .ai-chat-header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.ai-chat-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 8px 12px 16px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
 }
 
 .ai-chat-title {
   font-weight: 600;
   font-size: 16px;
+}
+
+.support-tabs {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.support-tabs :deep(.el-radio-button__inner) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.support-tabs :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: rgba(255, 255, 255, 0.95);
+  color: #5e4bcf;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: none;
+}
+
+.human-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.human-admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eef0f6;
+  border-bottom: 1px solid #e4e7ed;
+  flex-shrink: 0;
+}
+
+.human-chat-messages {
+  flex: 1;
+  min-height: 0;
+}
+
+.human-empty-hint,
+.human-ws-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.human-ws-hint {
+  margin-bottom: 4px;
 }
 
 .ai-chat-header-actions .el-button {

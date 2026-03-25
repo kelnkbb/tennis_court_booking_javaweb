@@ -2,11 +2,10 @@
 import axios from 'axios'
 import router from '@/router'
 import { ElMessage } from 'element-plus'
-import { getApiBaseUrl } from '@/config/api.js'
 
 const request = axios.create({
-    baseURL: getApiBaseUrl(),
-    timeout: 15000
+    baseURL: '/api',
+    timeout: 5000
 })
 
 // 请求拦截器 - 添加token

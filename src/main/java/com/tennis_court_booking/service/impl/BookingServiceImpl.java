@@ -87,6 +87,9 @@ public class BookingServiceImpl implements BookingService {
             BigDecimal hours = BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 2, BigDecimal.ROUND_HALF_UP);
             booking.setDuration(hours);
         }
+        if (booking.getDuration() == null || booking.getDuration().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("预约时长无效，请检查开始与结束时间");
+        }
 
         // 获取场地单价并计算总金额（原价）
         if (booking.getCourtId() != null && booking.getDuration() != null) {
@@ -114,18 +117,17 @@ public class BookingServiceImpl implements BookingService {
         // 检查时间冲突
         if (!checkTimeAvailable(booking.getCourtId(), booking.getBookingDate(),
                 booking.getStartTime(), booking.getEndTime(), null)) {
-            throw new RuntimeException("该时间段已被预约，请选择其他时间");
+            throw new IllegalArgumentException("该时间段已被预约，请选择其他时间");
         }
 
-        // 每日全用户合计不超过 2 小时
+        // 每日全用户合计不超过 2 小时（含本单；同一用户当日多次预约的时长也累计在内）
         BigDecimal usedOthers = bookingMapper.sumDurationForCourtDate(
                 booking.getCourtId(), booking.getBookingDate(), null);
         if (usedOthers == null) {
             usedOthers = BigDecimal.ZERO;
         }
-        if (booking.getDuration() != null
-                && usedOthers.add(booking.getDuration()).compareTo(MAX_DAILY_HOURS_PER_COURT) > 0) {
-            throw new RuntimeException("该日该场地可预约总时长已达上限（每日最多2小时，含所有用户）");
+        if (usedOthers.add(booking.getDuration()).compareTo(MAX_DAILY_HOURS_PER_COURT) > 0) {
+            throw new IllegalArgumentException("该日该场地可预约总时长已达上限（每日最多 2 小时，含所有用户；您当日在该场地的预约将累计计算）");
         }
 
         if (booking.getCancelRequestStatus() == null) {
@@ -167,6 +169,9 @@ public class BookingServiceImpl implements BookingService {
             BigDecimal hours = BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 2, BigDecimal.ROUND_HALF_UP);
             booking.setDuration(hours);
         }
+        if (booking.getDuration() == null || booking.getDuration().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("预约时长无效，请检查开始与结束时间");
+        }
 
         // 重新计算总金额
         if (booking.getCourtId() != null && booking.getDuration() != null) {
@@ -195,7 +200,7 @@ public class BookingServiceImpl implements BookingService {
         // 检查时间冲突（排除当前预约）
         if (!checkTimeAvailable(booking.getCourtId(), booking.getBookingDate(),
                 booking.getStartTime(), booking.getEndTime(), booking.getId())) {
-            throw new RuntimeException("该时间段已被预约，请选择其他时间");
+            throw new IllegalArgumentException("该时间段已被预约，请选择其他时间");
         }
 
         BigDecimal usedOthers = bookingMapper.sumDurationForCourtDate(
@@ -203,9 +208,8 @@ public class BookingServiceImpl implements BookingService {
         if (usedOthers == null) {
             usedOthers = BigDecimal.ZERO;
         }
-        if (booking.getDuration() != null
-                && usedOthers.add(booking.getDuration()).compareTo(MAX_DAILY_HOURS_PER_COURT) > 0) {
-            throw new RuntimeException("该日该场地可预约总时长已达上限（每日最多2小时，含所有用户）");
+        if (usedOthers.add(booking.getDuration()).compareTo(MAX_DAILY_HOURS_PER_COURT) > 0) {
+            throw new IllegalArgumentException("该日该场地可预约总时长已达上限（每日最多 2 小时，含所有用户；您当日在该场地的预约将累计计算）");
         }
 
         bookingMapper.updateBooking(booking);

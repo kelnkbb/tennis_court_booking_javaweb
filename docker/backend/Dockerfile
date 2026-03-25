@@ -10,16 +10,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 复制 pom.xml 并下载依赖（go-offline 对网络更敏感；resolve + 重试更适合 Docker 构建）
+# 复制 pom.xml 并下载依赖
 COPY pom.xml .
-ENV MAVEN_OPTS="-Dmaven.wagon.http.retryHandler.count=10 -Dmaven.wagon.http.retryHandler.requestSentEnabled=true"
-RUN set -eux; \
-  for i in 1 2 3 4 5; do \
-    mvn -B -e -U dependency:resolve-plugins dependency:resolve && exit 0; \
-    echo "maven dependency resolve attempt $i failed, retrying in ${i}0s..."; \
-    sleep $((i * 10)); \
-  done; \
-  exit 1
+RUN mvn dependency:go-offline -B
 
 # 复制源代码并打包
 COPY src ./src

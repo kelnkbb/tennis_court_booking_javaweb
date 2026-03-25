@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tennis_court_booking.cs.mapper.CsConversationMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cs_conversation (user_id, status, created_at, updated_at)
+        VALUES (#{userId}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="findOpenByUserId" resultType="CsConversation">
+        SELECT id, user_id AS userId, status, created_at AS createdAt, updated_at AS updatedAt
+        FROM cs_conversation
+        WHERE user_id = #{userId} AND status = 1
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="CsConversation">
+        SELECT id, user_id AS userId, status, created_at AS createdAt, updated_at AS updatedAt
+        FROM cs_conversation
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateUpdatedAt">
+        UPDATE cs_conversation SET updated_at = #{updatedAt} WHERE id = #{id}
+    </update>
+
+    <update id="closeById">
+        UPDATE cs_conversation SET status = 0, updated_at = #{updatedAt} WHERE id = #{id}
+    </update>
+
+    <select id="listOpen" resultType="CsConversation">
+        SELECT id, user_id AS userId, status, created_at AS createdAt, updated_at AS updatedAt
+        FROM cs_conversation
+        WHERE status = 1
+        ORDER BY updated_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

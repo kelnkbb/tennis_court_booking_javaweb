@@ -41,6 +41,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
         }
         attributes.put("userId", userId);
         attributes.put("username", claims.getSubject());
+        attributes.put("role", intClaim(claims, "role"));
         return true;
     }
 
@@ -48,5 +49,22 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
         // noop
+    }
+
+    private static Integer intClaim(Claims claims, String name) {
+        Object v = claims.get(name);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Integer) {
+            return (Integer) v;
+        }
+        if (v instanceof Long) {
+            return ((Long) v).intValue();
+        }
+        if (v instanceof Number) {
+            return ((Number) v).intValue();
+        }
+        return null;
     }
 }

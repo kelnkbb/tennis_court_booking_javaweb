@@ -94,8 +94,12 @@ public class BookingController {
             return Result.error("该时间段已被预约，请选择其他时间");
         }
 
-        Booking updatedBooking = bookingService.updateBooking(booking);
-        return Result.success("更新成功", updatedBooking);
+        try {
+            Booking updatedBooking = bookingService.updateBooking(booking);
+            return Result.success("更新成功", updatedBooking);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.error(400, e.getMessage());
+        }
     }
 
     /**
