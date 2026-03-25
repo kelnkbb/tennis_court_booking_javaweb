@@ -28,6 +28,7 @@ public class CourtServiceImpl implements CourtService {
     @Override
     public void deleteById(Integer id) {
         courtMapper.deleteById(id);
+        courtCache.removeHeatAfterDelete(id);
         courtCache.evictAfterCourtMutation(id);
     }
 
@@ -83,5 +84,10 @@ public class CourtServiceImpl implements CourtService {
             }
         }
         return out;
+    }
+
+    @Override
+    public boolean isHotCourt(Integer courtId) {
+        return courtCache.isHotCourt(courtId);
     }
 }

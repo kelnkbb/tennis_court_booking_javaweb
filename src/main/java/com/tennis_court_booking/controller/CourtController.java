@@ -28,8 +28,16 @@ public class CourtController {
      * 热点场地 TopN（基于多级缓存层记录的访问热度 ZSet；新环境无数据时回退为列表前 N 条）。
      */
     @GetMapping("/courts/hot")
-    public Result<List<Court>> hotCourts(@RequestParam(defaultValue = "10") int topN) {
+    public Result<List<Court>> hotCourts(@RequestParam(defaultValue = "5") int topN) {
         return Result.success(courtService.hotCourts(topN));
+    }
+
+    /**
+     * 是否位于当前「热门 Set」内（热度前 5），供展示角标等 O(1) 判断。
+     */
+    @GetMapping("/courts/hot/{id}/member")
+    public Result<Boolean> hotCourtMember(@PathVariable Integer id) {
+        return Result.success(courtService.isHotCourt(id));
     }
 
     /**

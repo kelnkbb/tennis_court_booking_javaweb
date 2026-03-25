@@ -53,6 +53,15 @@ export function getAllCourts() {
     })
 }
 
+/** 热门场地 TopN（后端按访问热度 ZSet/Set） */
+export function getHotCourts(topN = 5) {
+    return request({
+        url: '/courts/hot',
+        method: 'get',
+        params: { topN }
+    })
+}
+
 // 根据 ID 获取场馆
 export function getCourtById(id) {
     return request({

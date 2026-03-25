@@ -27,8 +27,15 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * 场地读路径多级缓存（Caffeine L1 + Redis L2）与热点追踪（Redis ZSet + Set）。
- * 写路径由业务在改库后调用 {@link #evictAfterCourtMutation(Integer)}。
+ * 场地读路径多级缓存（Caffeine L1 + Redis L2）与动态热图：
+ * <ul>
+ *     <li>L1：Caffeine 按访问时间淘汰（{@code expireAfterAccess}）+ 容量上限，贴近 LRU 语义；</li>
+ *     <li>L2：Redis 逻辑过期缓存单条与列表；</li>
+ *     <li>热度：每次按 ID 读场地时在 {@link #cacheTaskExecutor} 中异步 ZINCRBY，不阻塞主线程；</li>
+ *     <li>ZSet 仅保留分数最高的 {@link #ZSET_MAX_KEEP} 个场地，低分定期裁掉；</li>
+ *     <li>Set 存当前热度 Top {@link #HOT_SET_SIZE} 的 id，供 O(1) {@link #isHotCourt(Integer)} 与首页推荐。</li>
+ * </ul>
+ * 写路径由业务在改库后调用 {@link #evictAfterCourtMutation(Integer)}；删除场地请再调 {@link #removeHeatAfterDelete(Integer)}。
  * 若 Redis 删除失败，则通过 MQ 发补偿消息重试；同时 Redis TTL 作为兜底。
  */
 @Slf4j
@@ -40,10 +47,11 @@ public class CourtMultilevelCacheManager {
     private static final String REDIS_LIST_ALL = "tennis:cache:court:list:all";
     /** ZSet：member=场地 id，score=访问热度 */
     private static final String REDIS_ZSET_HEAT = "tennis:hot:court:heat";
-    /** Set：当前 TopN 热点 id，便于 O(1) 判断或展示 */
+    /** Set：热度 TopN 的场地 id，便于 O(1) 判断是否热门 */
     private static final String REDIS_SET_HOT_IDS = "tennis:hot:court:ids";
 
-    private static final Duration LOCAL_TTL = Duration.ofMinutes(5);
+    /** 单条场地：按「最后访问时间」过期，配合 maximumSize 近似 LRU */
+    private static final Duration LOCAL_ACCESS_TTL = Duration.ofMinutes(5);
     private static final RedisLogicalExpireTemplate.CacheOptions COURT_CACHE_OPTIONS =
             new RedisLogicalExpireTemplate.CacheOptions(
                     TimeUnit.MINUTES.toSeconds(10),
@@ -53,10 +61,10 @@ public class CourtMultilevelCacheManager {
             );
     private static final long REDIS_TTL_SECONDS = TimeUnit.MINUTES.toSeconds(10);
     private static final int LOCAL_MAX_SINGLE_COURTS = 512;
-    /** ZSet 超过该规模则裁剪掉低分 member，只保留 HOT_KEEP 个 */
-    private static final long ZSET_TRIM_THRESHOLD = 200;
-    private static final long HOT_KEEP = 100;
-    private static final int HOT_TOP_FOR_SET = 32;
+    /** ZSet 中最多保留的场地数（按分数保留最高的前 N 名） */
+    private static final int ZSET_MAX_KEEP = 20;
+    /** 热门 Set 与首页推荐条数：热度前 5 */
+    private static final int HOT_SET_SIZE = 5;
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -84,11 +92,11 @@ public class CourtMultilevelCacheManager {
     void initLocal() {
         this.localById = Caffeine.newBuilder()
                 .maximumSize(LOCAL_MAX_SINGLE_COURTS)
-                .expireAfterWrite(LOCAL_TTL)
+                .expireAfterAccess(LOCAL_ACCESS_TTL)
                 .build();
         this.localListAll = Caffeine.newBuilder()
                 .maximumSize(4)
-                .expireAfterWrite(LOCAL_TTL)
+                .expireAfterWrite(LOCAL_ACCESS_TTL)
                 .build();
     }
 
@@ -148,6 +156,40 @@ public class CourtMultilevelCacheManager {
             localListAll.put(lk, fromDb);
         }
         return fromDb == null ? Collections.emptyList() : fromDb;
+    }
+
+    /**
+     * 是否位于当前 Redis Set 维护的「热度前 {@link #HOT_SET_SIZE}」内，O(1)。
+     */
+    public boolean isHotCourt(Integer courtId) {
+        if (courtId == null) {
+            return false;
+        }
+        try {
+            Boolean m = stringRedisTemplate.opsForSet().isMember(REDIS_SET_HOT_IDS, courtId.toString());
+            return Boolean.TRUE.equals(m);
+        } catch (Exception e) {
+            log.debug("isHotCourt 查询失败 courtId={}", courtId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 场地被物理删除后，从热度 ZSet/Set 中移除，避免脏 id。
+     */
+    public void removeHeatAfterDelete(Integer courtId) {
+        if (courtId == null) {
+            return;
+        }
+        cacheTaskExecutor.execute(() -> {
+            try {
+                stringRedisTemplate.opsForZSet().remove(REDIS_ZSET_HEAT, courtId.toString());
+                stringRedisTemplate.opsForSet().remove(REDIS_SET_HOT_IDS, courtId.toString());
+                refreshHotIdSet();
+            } catch (Exception e) {
+                log.debug("删除场地热度记录失败 courtId={}", courtId, e);
+            }
+        });
     }
 
     /**
@@ -216,27 +258,26 @@ public class CourtMultilevelCacheManager {
             try {
                 stringRedisTemplate.opsForZSet().incrementScore(REDIS_ZSET_HEAT, Objects.requireNonNull(courtId.toString()), 1);
                 Long zcard = stringRedisTemplate.opsForZSet().size(REDIS_ZSET_HEAT);
-                if (zcard != null && zcard > ZSET_TRIM_THRESHOLD) {
-                    long toRemove = zcard - HOT_KEEP;
-                    if (toRemove > 0) {
-                        // 升序：rank 0 为 score 最小，裁掉最低的 toRemove 个
-                        stringRedisTemplate.opsForZSet().removeRange(REDIS_ZSET_HEAT, 0, toRemove - 1);
-                    }
-                    refreshHotIdSet();
+                if (zcard != null && zcard > ZSET_MAX_KEEP) {
+                    long toRemove = zcard - ZSET_MAX_KEEP;
+                    // 升序 rank 0 为最低分，裁掉最冷的场地
+                    stringRedisTemplate.opsForZSet().removeRange(REDIS_ZSET_HEAT, 0, toRemove - 1);
                 }
+                refreshHotIdSet();
             } catch (Exception e) {
                 log.debug("异步记录场地热度失败 courtId={}", courtId, e);
             }
         });
     }
 
+    /** 用 ZSet 当前分数最高的前 {@link #HOT_SET_SIZE} 名刷新 Set，供首页与 isMember */
     private void refreshHotIdSet() {
         try {
-            Set<String> top = stringRedisTemplate.opsForZSet().reverseRange(REDIS_ZSET_HEAT, 0, HOT_TOP_FOR_SET - 1);
+            Set<String> top = stringRedisTemplate.opsForZSet().reverseRange(REDIS_ZSET_HEAT, 0, HOT_SET_SIZE - 1);
+            stringRedisTemplate.delete(REDIS_SET_HOT_IDS);
             if (top == null || top.isEmpty()) {
                 return;
             }
-            stringRedisTemplate.delete(REDIS_SET_HOT_IDS);
             String[] members = top.stream().filter(Objects::nonNull).toArray(String[]::new);
             if (members.length > 0) {
                 stringRedisTemplate.opsForSet().add(REDIS_SET_HOT_IDS, members);

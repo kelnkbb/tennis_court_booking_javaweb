@@ -525,8 +525,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { getAllBookings, getMyBookings, searchBookings, addBooking, updateBooking,
@@ -1203,6 +1203,21 @@ const handleAddBooking = async (courtId = null) => {
   await loadMyUnusedCoupons()
 }
 
+/**
+ * 从首页「热门场地」等链接携带 ?courtId= 进入时：打开新建预约弹窗并去掉 query，避免重复弹出、刷新再次打开。
+ */
+const openBookingFromCourtQuery = async () => {
+  const raw = route.query.courtId
+  if (raw == null || raw === '') return
+  const courtId = Number(raw)
+  if (!Number.isFinite(courtId) || courtId <= 0) return
+  if (route.name !== 'Bookings' && route.name !== 'MyBookings') return
+  await handleAddBooking(courtId)
+  const q = { ...route.query }
+  delete q.courtId
+  await router.replace({ path: route.path, query: q })
+}
+
 // 编辑预约
 const handleEditBooking = (row) => {
   currentEditBooking.value = { ...row }
@@ -1461,13 +1476,8 @@ onMounted(async () => {
   await loadPendingCancels()
   await loadPendingPaymentVerifies()
 
-  // 如果是从场地列表带着 courtId 进入“我的预订”，自动打开新增预约弹窗
-  if (isMyPage.value && route.query.courtId) {
-    const courtId = Number(route.query.courtId)
-    if (courtId) {
-      handleAddBooking(courtId)
-    }
-  }
+  await nextTick()
+  await openBookingFromCourtQuery()
 
   if (route.query.stripe === 'success') {
     ElMessage.success('支付成功，订单状态将更新为已付款')
@@ -1476,6 +1486,15 @@ onMounted(async () => {
     ElMessage.info('已取消支付')
   }
 })
+
+// 已在预约页时，从首页再次点击热门场地（仅 query 变化、组件复用）也要打开弹窗
+watch(
+  () => route.query.courtId,
+  (cid) => {
+    if (cid == null || cid === '') return
+    openBookingFromCourtQuery()
+  }
+)
 </script>
 
 <style scoped>

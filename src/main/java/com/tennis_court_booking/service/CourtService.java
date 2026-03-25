@@ -38,4 +38,9 @@ public interface CourtService {
      * 按访问热度返回 TopN 场地（依赖缓存层维护的 Redis ZSet；不足时回退为全量列表前 N 条）。
      */
     List<Court> hotCourts(int topN);
+
+    /**
+     * 是否处于当前 Redis Set 维护的热度前列（与缓存层热门集合一致）。
+     */
+    boolean isHotCourt(Integer courtId);
 }
