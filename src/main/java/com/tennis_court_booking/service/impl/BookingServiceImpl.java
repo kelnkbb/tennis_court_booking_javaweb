@@ -401,7 +401,7 @@ public class BookingServiceImpl implements BookingService {
             return 0;
         }
         String c = channel.trim().toLowerCase();
-        if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu")) {
+        if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu") && !c.equals("stripe")) {
             return 0;
         }
         int n = bookingMapper.userPayBooking(bookingId, userId, c);
@@ -417,7 +417,7 @@ public class BookingServiceImpl implements BookingService {
             return 0;
         }
         String c = channel.trim().toLowerCase();
-        if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu")) {
+        if (!c.equals("wechat") && !c.equals("alipay") && !c.equals("xianyu") && !c.equals("stripe")) {
             return 0;
         }
         int n = bookingMapper.userClaimPaidBooking(bookingId, userId, c);

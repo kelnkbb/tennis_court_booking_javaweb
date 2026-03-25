@@ -206,3 +206,13 @@ export function adminRejectPaymentVerifyBooking(id) {
         method: 'put'
     })
 }
+
+/** Stripe Checkout：返回跳转 URL（需配置后端 stripe.secret-key） */
+export function createStripeCheckoutSession(bookingId) {
+    return request({
+        url: '/payments/stripe/checkout-session',
+        method: 'post',
+        data: { bookingId },
+        timeout: 20000
+    })
+}

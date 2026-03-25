@@ -6,12 +6,12 @@ spring:
 
 
   # 统一强制 UTF-8，避免中文在反向代理/浏览器解析时出现乱码
-  # 数据库配置
+  # 数据库配置（环境变量见项目根目录 env.example）
   datasource:
-    url: jdbc:mysql://localhost:3306/tennisbooking?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: "${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/tennisbooking?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}"
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: ch112211
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:ch112211}
     type: com.alibaba.druid.pool.DruidDataSource
     
     # Druid连接池配置
@@ -32,9 +32,9 @@ spring:
       connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000
   data:
     redis:
-      host: localhost
-      port: 6379
-      password:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: "${SPRING_DATA_REDIS_PASSWORD:}"
       database: 0
       timeout: 2000ms
       lettuce:
@@ -45,10 +45,10 @@ spring:
           max-wait: 100ms     # 连接池获取连接最大等待时间
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
     listener:
       simple:
         # 重试耗尽后不再 requeue，配合队列 DLX 进入死信队列
@@ -91,7 +91,7 @@ logging:
 
 # 服务器配置
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   servlet:
     context-path: /
     encoding:
@@ -104,24 +104,38 @@ cache:
   consistency:
     max-attempts: 5
 
+# WebSocket：系统类全站广播在 Redis 上的幂等窗口（秒），多实例共享
+app:
+  websocket:
+    broadcast-idempotency-ttl-seconds: ${APP_WS_BROADCAST_IDEMP_TTL_SECONDS:604800}
+
 # jwt配置
 jwt:
-  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-  expiration: 86400000 # 24小时
+  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  expiration: ${JWT_EXPIRATION:86400000} # 24小时
+
+# Stripe 在线支付（测试密钥见 https://dashboard.stripe.com/test/apikeys ）
+# Webhook 需在 Dashboard 创建端点：URL = https://你的域名/api/payments/stripe/webhook，并复制签名密钥
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  success-url: ${STRIPE_SUCCESS_URL:http://localhost:5173/my-bookings?stripe=success}
+  cancel-url: ${STRIPE_CANCEL_URL:http://localhost:5173/my-bookings?stripe=cancel}
+  currency: cny
 
 # AI 模型接入（OpenAI 兼容接口，示例使用通义千问兼容地址）
 langchain4j:
   open-ai:
     chat-model:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${AI_API_KEY:sk-6a0bd6c2051d4976a7f31be7cf701bb8}
+      api-key: ${AI_API_KEY:}
       model-name: qwen-plus
       log-requests: true
       log-responses: true
     # RAG 向量化：与 chat 同兼容网关；模型需与 ai.rag.embedding-dimension 一致（text-embedding-v2 为 1536 维）
     embedding-model:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${AI_API_KEY:sk-6a0bd6c2051d4976a7f31be7cf701bb8}
+      api-key: ${AI_API_KEY:}
       model-name: text-embedding-v2
 
 # RAG 知识库：classpath:rag/*.md 启动时入库；管理员可 POST /api/admin/ai/rag/reindex 全量重建

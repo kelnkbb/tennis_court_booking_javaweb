@@ -186,8 +186,8 @@ public class AuthController {
             return Result.error(400, "新密码长度不能小于6位");
         }
 
-        // 2. 获取用户
-        User user = userService.findById(userId);
+        // 2. 获取用户（含密码，不走缓存）
+        User user = userService.findByIdWithPassword(userId);
         if (user == null) {
             return Result.error(404, "用户不存在");
         }

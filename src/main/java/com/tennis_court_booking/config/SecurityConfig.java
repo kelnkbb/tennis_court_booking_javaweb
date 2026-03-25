@@ -64,6 +64,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // WebSocket 握手：JWT 在查询参数 token，由握手拦截器校验
                         .requestMatchers("/api/ws/**").permitAll()
+                        // Stripe Webhook（Stripe-Signature 验签，无 JWT）
+                        .requestMatchers("/api/payments/stripe/webhook").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated()
                 )

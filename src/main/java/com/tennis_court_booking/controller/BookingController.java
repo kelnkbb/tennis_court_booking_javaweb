@@ -233,7 +233,7 @@ public class BookingController {
     }
 
     /**
-     * 用户确认付款（微信/支付宝/闲鱼）。正式环境微信支付宝应改为支付回调后再改状态，见 PAYMENT_INTEGRATION.md
+     * 用户确认付款（微信/支付宝/闲鱼/Stripe）。Stripe 在线支付以 Webhook 为准；本接口用于线下渠道模拟到账。
      */
     @PostMapping("/bookings/{id}/pay")
     public Result<String> userPay(

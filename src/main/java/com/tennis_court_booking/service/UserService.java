@@ -17,7 +17,16 @@ public interface UserService {
     User findByUsername(String username);
     User findByPhone(String phone);
     User findByEmail(String email);
+    /**
+     * 多级缓存（L1+L2），不含密码字段。
+     */
     User findById(Integer id);
+
+    /**
+     * 直查数据库，含密码哈希；仅用于原密码校验等，勿用于对外展示。
+     */
+    User findByIdWithPassword(Integer id);
+
     void updatePassword(Integer userId, String newPassword);
 
 }

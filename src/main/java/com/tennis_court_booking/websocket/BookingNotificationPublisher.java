@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class BookingNotificationPublisher {
 
+    /** 与 Redis 幂等键中的类型段一致 */
+    public static final String BROADCAST_TYPE_COUPON_ACTIVITY = "COUPON_ACTIVITY";
+
     public static final String TYPE_PAYMENT_VERIFY_APPROVED = "PAYMENT_VERIFY_APPROVED";
     public static final String TYPE_PAYMENT_VERIFY_REJECTED = "PAYMENT_VERIFY_REJECTED";
     public static final String TYPE_CANCEL_REQUEST_APPROVED = "CANCEL_REQUEST_APPROVED";
@@ -21,6 +24,7 @@ public class BookingNotificationPublisher {
     public static final String TYPE_COUPON_ACTIVITY_PUBLISHED = "COUPON_ACTIVITY_PUBLISHED";
 
     private final UserNotificationSessionRegistry sessionRegistry;
+    private final WsBroadcastIdempotencyService wsBroadcastIdempotencyService;
     private final ObjectMapper objectMapper;
 
     public void notifyPaymentVerifyResult(Integer userId, Integer bookingId, boolean approved) {
@@ -45,6 +49,12 @@ public class BookingNotificationPublisher {
      * 管理员发布秒杀活动后，通知所有在线用户（WebSocket）。
      */
     public void notifyCouponActivityPublished(Integer activityId, String activityTitle) {
+        if (activityId == null) {
+            return;
+        }
+        if (!wsBroadcastIdempotencyService.tryAcquire(BROADCAST_TYPE_COUPON_ACTIVITY, String.valueOf(activityId))) {
+            return;
+        }
         String title = "新秒杀优惠券";
         String message = "管理员已发布活动「" + (activityTitle != null ? activityTitle : "") + "」，可前往「优惠券秒杀」参与抢购。";
         BookingWsNotification n = new BookingWsNotification(

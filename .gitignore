@@ -30,3 +30,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# 本地环境（从 env.example 复制，勿提交密钥）
+.env

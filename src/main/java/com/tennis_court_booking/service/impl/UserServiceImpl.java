@@ -1,5 +1,6 @@
 package com.tennis_court_booking.service.impl;
 
+import com.tennis_court_booking.cache.UserCacheManager;
 import com.tennis_court_booking.mapper.UserMapper;
 import com.tennis_court_booking.pojo.entity.User;
 import com.tennis_court_booking.service.UserService;
@@ -16,6 +17,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private UserCacheManager userCacheManager;
 
     @Override
     public List<User> findAll() {
@@ -54,22 +58,39 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User findByPhone(String phone) {
-        return userMapper.findByPhone(phone);
+        User u = userMapper.findByPhone(phone);
+        if (u == null) {
+            return null;
+        }
+        return userCacheManager.getUserById(u.getId(), () -> userMapper.findById(u.getId()));
     }
 
     @Override
     public User findByEmail(String email) {
-        return userMapper.findByEmail(email);
+        User u = userMapper.findByEmail(email);
+        if (u == null) {
+            return null;
+        }
+        return userCacheManager.getUserById(u.getId(), () -> userMapper.findById(u.getId()));
     }
 
     @Override
     public User findById(Integer id) {
+        return userCacheManager.getUserById(id, () -> userMapper.findById(id));
+    }
+
+    @Override
+    public User findByIdWithPassword(Integer id) {
+        if (id == null) {
+            return null;
+        }
         return userMapper.findById(id);
     }
 
     @Override
     public void updatePassword(Integer userId, String newPassword) {
         userMapper.updatePassword(userId, newPassword);
+        userCacheManager.evictAfterUserMutation(userId);
     }
 
 }

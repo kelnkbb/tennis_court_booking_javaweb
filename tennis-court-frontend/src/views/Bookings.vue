@@ -328,8 +328,12 @@
           <el-radio label="wechat" border>微信支付</el-radio>
           <el-radio label="alipay" border>支付宝</el-radio>
           <el-radio label="xianyu" border>闲鱼</el-radio>
+          <el-radio label="stripe" border>Stripe（在线卡支付）</el-radio>
         </el-radio-group>
-        <p v-if="payChannel === 'xianyu'" class="pay-tip">
+        <p v-if="payChannel === 'stripe'" class="pay-tip">
+          将跳转至 Stripe 安全支付页完成付款（需后端配置 Stripe 密钥；测试卡见 Stripe 文档）。
+        </p>
+        <p v-else-if="payChannel === 'xianyu'" class="pay-tip">
           请选择后将弹出闲鱼收款码，按页面提示扫码付款。
         </p>
         <p v-else class="pay-tip">
@@ -338,7 +342,7 @@
       </div>
       <template #footer>
         <el-button @click="payDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="confirmPay">去付款</el-button>
+        <el-button type="primary" :loading="stripeCheckoutLoading" @click="confirmPay">去付款</el-button>
       </template>
     </el-dialog>
 
@@ -531,7 +535,8 @@ import { getAllBookings, getMyBookings, searchBookings, addBooking, updateBookin
   requestCancelBooking, getPendingCancelBookings,
   adminApproveCancelBooking, adminRejectCancelBooking,
   claimPaidBooking, getPendingPaymentVerifyBookings,
-  adminApprovePaymentVerifyBooking, adminRejectPaymentVerifyBooking } from '@/api/booking'
+  adminApprovePaymentVerifyBooking, adminRejectPaymentVerifyBooking,
+  createStripeCheckoutSession } from '@/api/booking'
 import { getAllCourts } from '@/api/court'
 import { getUserList } from '@/api/user'
 import { getMyUnusedCoupons } from '@/api/coupon'
@@ -627,6 +632,7 @@ const payTarget = ref(null)
 const payChannel = ref('wechat')
 const payQrDialogVisible = ref(false)
 const claimPaidSubmitting = ref(false)
+const stripeCheckoutLoading = ref(false)
 const payQrImageMap = {
   wechat: '/pay/wechat.png',
   alipay: '/pay/alipay.png',
@@ -913,8 +919,25 @@ const openPayDialog = (row) => {
   payDialogVisible.value = true
 }
 
-const confirmPay = () => {
+const confirmPay = async () => {
   if (!payTarget.value) return
+  if (payChannel.value === 'stripe') {
+    stripeCheckoutLoading.value = true
+    try {
+      const res = await createStripeCheckoutSession(payTarget.value.id)
+      if (res.code === 200 && res.data?.url) {
+        payDialogVisible.value = false
+        window.location.href = res.data.url
+      } else {
+        ElMessage.error(res?.message || '无法创建 Stripe 支付')
+      }
+    } catch (e) {
+      ElMessage.error(e.message || 'Stripe 支付失败')
+    } finally {
+      stripeCheckoutLoading.value = false
+    }
+    return
+  }
   payDialogVisible.value = false
   payQrDialogVisible.value = true
 }
@@ -1006,7 +1029,7 @@ const handleRejectCancel = (row) => {
 }
 
 const payChannelLabel = (c) => {
-  const m = { wechat: '微信', alipay: '支付宝', xianyu: '闲鱼' }
+  const m = { wechat: '微信', alipay: '支付宝', xianyu: '闲鱼', stripe: 'Stripe' }
   return m[c] || c
 }
 
@@ -1444,6 +1467,13 @@ onMounted(async () => {
     if (courtId) {
       handleAddBooking(courtId)
     }
+  }
+
+  if (route.query.stripe === 'success') {
+    ElMessage.success('支付成功，订单状态将更新为已付款')
+    await loadBookings()
+  } else if (route.query.stripe === 'cancel') {
+    ElMessage.info('已取消支付')
   }
 })
 </script>
