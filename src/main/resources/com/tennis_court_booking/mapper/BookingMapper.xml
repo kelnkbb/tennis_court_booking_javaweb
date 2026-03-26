@@ -434,6 +434,47 @@
         ORDER BY bookingCount DESC, paidAmount DESC
     </select>
 
+    <!-- 管理员：订单汇总 -->
+    <select id="getOrderStatsSummary" resultType="com.tennis_court_booking.pojo.vo.OrderStatsSummaryVO">
+        SELECT
+            COUNT(*) AS totalOrders,
+            COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) AS canceledCount,
+            COALESCE(SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END), 0) AS pendingPaymentCount,
+            COALESCE(SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END), 0) AS paidCount,
+            COALESCE(SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END), 0) AS completedCount,
+            COALESCE(SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END), 0) AS expiredCount,
+            COALESCE(SUM(total_amount), 0) AS totalAmount,
+            COALESCE(SUM(CASE WHEN status IN (2, 3) THEN total_amount ELSE 0 END), 0) AS paidAmount,
+            COALESCE(SUM(duration), 0) AS totalHours
+        FROM booking
+        <where>
+            <if test="startDate != null">
+                AND booking_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND booking_date &lt;= #{endDate}
+            </if>
+        </where>
+    </select>
 
+    <!-- 管理员：按日订单统计 -->
+    <select id="getOrderDailyStats" resultType="com.tennis_court_booking.pojo.vo.OrderDailyStatsVO">
+        SELECT
+            booking_date AS statDate,
+            COUNT(*) AS orderCount,
+            COALESCE(SUM(total_amount), 0) AS totalAmount,
+            COALESCE(SUM(CASE WHEN status IN (2, 3) THEN total_amount ELSE 0 END), 0) AS paidAmount
+        FROM booking
+        <where>
+            <if test="startDate != null">
+                AND booking_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND booking_date &lt;= #{endDate}
+            </if>
+        </where>
+        GROUP BY booking_date
+        ORDER BY booking_date ASC
+    </select>
 
 </mapper>

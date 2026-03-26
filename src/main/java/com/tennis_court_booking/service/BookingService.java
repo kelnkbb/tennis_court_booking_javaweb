@@ -6,6 +6,7 @@ import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
 import com.tennis_court_booking.pojo.vo.CourtStatsVO;
 import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
+import com.tennis_court_booking.pojo.vo.OrderStatsVO;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 
 import java.time.LocalDate;
@@ -95,6 +96,11 @@ public interface BookingService {
      * 管理员：按日期范围统计用户
      */
     List<UserBookingStatsVO> getUserBookingStats(LocalDate startDate, LocalDate endDate);
+
+    /**
+     * 管理员：订单统计（汇总 + 按日）
+     */
+    OrderStatsVO getOrderStats(LocalDate startDate, LocalDate endDate);
 
     /**
      * 生成预约单号

@@ -9,6 +9,7 @@ import com.tennis_court_booking.pojo.entity.Court;
 import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
 import com.tennis_court_booking.pojo.vo.CourtStatsVO;
+import com.tennis_court_booking.pojo.vo.OrderStatsVO;
 import com.tennis_court_booking.pojo.vo.CourtSlotOptionsVO;
 import com.tennis_court_booking.pojo.vo.SlotOptionVO;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
@@ -283,6 +284,14 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public List<UserBookingStatsVO> getUserBookingStats(LocalDate startDate, LocalDate endDate) {
         return bookingMapper.getUserBookingStats(startDate, endDate);
+    }
+
+    @Override
+    public OrderStatsVO getOrderStats(LocalDate startDate, LocalDate endDate) {
+        OrderStatsVO vo = new OrderStatsVO();
+        vo.setSummary(bookingMapper.getOrderStatsSummary(startDate, endDate));
+        vo.setDaily(bookingMapper.getOrderDailyStats(startDate, endDate));
+        return vo;
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.tennis_court_booking.controller;
 
 import com.tennis_court_booking.pojo.vo.CourtStatsVO;
+import com.tennis_court_booking.pojo.vo.OrderStatsVO;
 import com.tennis_court_booking.pojo.vo.Result;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import com.tennis_court_booking.service.BookingService;
@@ -44,6 +45,17 @@ public class AdminStatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
         return Result.success(bookingService.getCourtStats(startDate, endDate));
+    }
+
+    /**
+     * 订单统计（汇总 + 按日；按预约日期 booking_date 过滤；start/end 为空则不限制）
+     */
+    @GetMapping("/orders")
+    public Result<OrderStatsVO> orderStats(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return Result.success(bookingService.getOrderStats(startDate, endDate));
     }
 }
 

@@ -35,6 +35,10 @@
             <span class="icon">📈</span>
             场地统计
           </router-link>
+          <router-link to="/stats/orders" class="nav-item" active-class="active">
+            <span class="icon">📋</span>
+            订单统计
+          </router-link>
           <router-link to="/admin/coupons" class="nav-item" active-class="active">
             <span class="icon">🎫</span>
             秒杀券管理
@@ -854,6 +858,7 @@ const currentRoute = computed(() => {
     'UserManagement': '用户管理',
     'UserStats': '用户统计',
     'CourtStats': '场地统计',
+    'OrderStats': '订单统计',
     'AdminCouponActivities': '秒杀券管理',
     'CouponSeckill': '优惠券秒杀'
   }

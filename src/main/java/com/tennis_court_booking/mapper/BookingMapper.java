@@ -5,6 +5,8 @@ import com.tennis_court_booking.pojo.entity.Booking;
 import com.tennis_court_booking.pojo.vo.BookingVO;
 import com.tennis_court_booking.pojo.vo.CourtBookingStats;
 import com.tennis_court_booking.pojo.vo.CourtStatsVO;
+import com.tennis_court_booking.pojo.vo.OrderDailyStatsVO;
+import com.tennis_court_booking.pojo.vo.OrderStatsSummaryVO;
 import com.tennis_court_booking.pojo.vo.UserBookingStatsVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -97,6 +99,18 @@ public interface BookingMapper {
      */
     List<UserBookingStatsVO> getUserBookingStats(@Param("startDate") LocalDate startDate,
                                                  @Param("endDate") LocalDate endDate);
+
+    /**
+     * 管理员：订单汇总统计（按 booking_date 筛选；start/end 为空则不加边界）
+     */
+    OrderStatsSummaryVO getOrderStatsSummary(@Param("startDate") LocalDate startDate,
+                                             @Param("endDate") LocalDate endDate);
+
+    /**
+     * 管理员：按日订单统计
+     */
+    List<OrderDailyStatsVO> getOrderDailyStats(@Param("startDate") LocalDate startDate,
+                                               @Param("endDate") LocalDate endDate);
 
     /**
      * 根据用户ID统计其预约总数

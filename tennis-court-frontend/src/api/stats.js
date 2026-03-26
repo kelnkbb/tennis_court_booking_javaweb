@@ -18,3 +18,12 @@ export function getCourtStats(params) {
   })
 }
 
+/** 管理员：订单统计 */
+export function getOrderStats(params) {
+  return request({
+    url: '/admin/stats/orders',
+    method: 'get',
+    params
+  })
+}
+

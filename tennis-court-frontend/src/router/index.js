@@ -7,6 +7,7 @@ import Bookings from '../views/Bookings.vue'
 import UserManagement from '../views/UserManagement.vue'
 import UserStats from '../views/UserStats.vue'
 import CourtStats from '../views/CourtStats.vue'
+import OrderStats from '../views/OrderStats.vue'
 import Login from '../views/Login.vue'
 import AdminCouponActivities from '../views/AdminCouponActivities.vue'
 import CouponSeckill from '../views/CouponSeckill.vue'
@@ -63,6 +64,12 @@ const routes = [
         path: '/stats/court',
         name: 'CourtStats',
         component: CourtStats
+      },
+      {
+        path: '/stats/orders',
+        name: 'OrderStats',
+        component: OrderStats,
+        meta: { requiresAdmin: true }
       },
       {
         path: '/admin/coupons',
