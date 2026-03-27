@@ -29,4 +29,8 @@ public interface UserService {
 
     void updatePassword(Integer userId, String newPassword);
 
+    void deleteById(Integer id);
+
+    void batchDelete(List<Integer> ids);
+
 }

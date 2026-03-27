@@ -285,7 +285,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getUserList, addUser } from '@/api/user'
+import { getUserList, addUser, deleteUser, batchDeleteUsers } from '@/api/user'
 
 const users = ref([])
 const loading = ref(true)
@@ -500,12 +500,20 @@ const handleBatchDelete = () => {
         cancelButtonText: '取消',
         type: 'warning'
       }
-  ).then(() => {
-    console.log('批量删除用户:', selectedUsers.value)
-    ElMessage.success('批量删除成功（模拟）')
-    selectedUsers.value = []
-    // 实际项目中应该调用API删除后重新加载
-    // loadUsers()
+  ).then(async () => {
+    try {
+      const result = await batchDeleteUsers(selectedUsers.value)
+      if (result && result.code === 200) {
+        ElMessage.success('批量删除成功')
+        selectedUsers.value = []
+        await loadUsers()
+      } else {
+        ElMessage.error(result?.message || '批量删除失败')
+      }
+    } catch (err) {
+      console.error('批量删除失败:', err)
+      ElMessage.error(err.message || '批量删除失败')
+    }
   }).catch(() => {})
 }
 
@@ -538,11 +546,20 @@ const handleDeleteUser = (user) => {
         cancelButtonText: '取消',
         type: 'warning'
       }
-  ).then(() => {
-    console.log('删除用户:', user.id)
-    ElMessage.success('删除成功（模拟）')
-    // 实际项目中应该调用API删除后重新加载
-    // loadUsers()
+  ).then(async () => {
+    try {
+      const result = await deleteUser(user.id)
+      if (result && result.code === 200) {
+        ElMessage.success('删除成功')
+        selectedUsers.value = selectedUsers.value.filter(id => id !== user.id)
+        await loadUsers()
+      } else {
+        ElMessage.error(result?.message || '删除失败')
+      }
+    } catch (err) {
+      console.error('删除用户失败:', err)
+      ElMessage.error(err.message || '删除失败')
+    }
   }).catch(() => {})
 }
 

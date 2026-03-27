@@ -20,4 +20,11 @@ public interface UserMapper {
     User findById(@Param("id") Integer id);
     void updatePassword(@Param("userId") Integer userId, @Param("newPassword") String newPassword);
 
+    /** 仅查登录名；不走用户多级缓存，避免缓存中缺少 username */
+    String findUsernameById(@Param("id") Integer id);
+
+    void deleteById(@Param("id") Integer id);
+
+    void batchDelete(@Param("ids") List<Integer> ids);
+
 }

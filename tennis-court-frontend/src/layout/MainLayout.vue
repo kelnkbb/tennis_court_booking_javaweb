@@ -295,7 +295,7 @@
                 <el-option
                   v-for="c in adminCsConversations"
                   :key="c.id"
-                  :label="`#${c.id} · 用户 ${c.userId}`"
+                  :label="adminCsConversationLabel(c)"
                   :value="c.id"
                 />
               </el-select>
@@ -436,6 +436,13 @@ const mapApiRow = (m) => ({
   content: m.content
 })
 
+/** 管理员会话下拉：优先展示用户名，缺省时回退 userId */
+const adminCsConversationLabel = (c) => {
+  if (!c) return ''
+  const name = (c.username && String(c.username).trim()) || `用户#${c.userId ?? '?'}`
+  return `${name}  ·  会话 #${c.id}`
+}
+
 const scrollHumanToBottom = () => {
   nextTick(() => {
     const el = humanMessagesRef.value
@@ -443,9 +450,18 @@ const scrollHumanToBottom = () => {
   })
 }
 
+/** 当前选中会话里对方（用户）的登录名，用于管理员侧气泡标签 */
+const adminCsPeerUsername = computed(() => {
+  if (!isAdmin.value || adminCsConversationId.value == null) return ''
+  const c = adminCsConversations.value.find((x) => x.id === adminCsConversationId.value)
+  const u = c?.username
+  return u != null && String(u).trim() ? String(u).trim() : ''
+})
+
 const humanMsgLabel = (m) => {
   if (isAdmin.value) {
-    return m.senderType === 2 ? '我' : '用户'
+    if (m.senderType === 2) return '我'
+    return adminCsPeerUsername.value || '用户'
   }
   return m.senderType === 1 ? '我' : '客服'
 }

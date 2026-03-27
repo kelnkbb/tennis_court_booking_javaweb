@@ -33,4 +33,16 @@ public class UserController {
         User newUser = userService.addUser(user);
         return Result.success("新增成功", newUser);
     }
+
+    @DeleteMapping("/users/{id}")
+    public Result<String> deleteById(@PathVariable Integer id) {
+        userService.deleteById(id);
+        return Result.success("删除成功", null);
+    }
+
+    @DeleteMapping("/users/batch")
+    public Result<String> batchDelete(@RequestBody List<Integer> ids) {
+        userService.batchDelete(ids);
+        return Result.success("批量删除成功", null);
+    }
 }

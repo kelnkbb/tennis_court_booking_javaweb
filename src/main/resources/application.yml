@@ -108,6 +108,8 @@ cache:
 app:
   websocket:
     broadcast-idempotency-ttl-seconds: ${APP_WS_BROADCAST_IDEMP_TTL_SECONDS:604800}
+    # 握手时校验浏览器 Origin；仅 localhost 会导致公网 IP/域名访问时人工客服 WS 无法连接。逗号分隔多个 pattern，默认 *（仍由 JWT 校验 token）
+    allowed-origin-patterns: "${APP_WS_ALLOWED_ORIGIN_PATTERNS:*}"
 
 # jwt配置
 jwt:

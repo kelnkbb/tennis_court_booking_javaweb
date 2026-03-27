@@ -5,6 +5,7 @@ import com.tennis_court_booking.mapper.UserMapper;
 import com.tennis_court_booking.pojo.entity.User;
 import com.tennis_court_booking.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,9 @@ public class UserServiceImpl implements UserService {
     @Autowired
     private UserCacheManager userCacheManager;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @Override
     public List<User> findAll() {
         List<User> userlist = userMapper.findAll();
@@ -34,6 +38,11 @@ public class UserServiceImpl implements UserService {
         // 设置创建时间和更新时间
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
+
+        // 统一保证密码以 BCrypt 格式入库，避免明文导致无法登录
+        if (user.getPassword() != null && !user.getPassword().isBlank() && !isBcryptHash(user.getPassword())) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
 
         // 设置默认值
         if (user.getStatus() == null) {
@@ -91,6 +100,25 @@ public class UserServiceImpl implements UserService {
     public void updatePassword(Integer userId, String newPassword) {
         userMapper.updatePassword(userId, newPassword);
         userCacheManager.evictAfterUserMutation(userId);
+    }
+
+    @Override
+    public void deleteById(Integer id) {
+        userMapper.deleteById(id);
+        userCacheManager.evictAfterUserMutation(id);
+    }
+
+    @Override
+    public void batchDelete(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        userMapper.batchDelete(ids);
+        ids.forEach(userCacheManager::evictAfterUserMutation);
+    }
+
+    private boolean isBcryptHash(String value) {
+        return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$");
     }
 
 }

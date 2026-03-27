@@ -5,6 +5,7 @@ import com.tennis_court_booking.cs.entity.CsMessage;
 import com.tennis_court_booking.cs.service.CsChatService;
 import com.tennis_court_booking.cs.vo.CsConversationVO;
 import com.tennis_court_booking.cs.vo.CsMessageVO;
+import com.tennis_court_booking.mapper.UserMapper;
 import com.tennis_court_booking.pojo.vo.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 public class CsChatController {
 
     private final CsChatService csChatService;
+    private final UserMapper userMapper;
 
     @GetMapping("/me/conversation")
     public Result<CsConversationVO> myOpenConversation(@RequestAttribute("userId") Integer userId) {
@@ -94,7 +96,12 @@ public class CsChatController {
     }
 
     private CsConversationVO toConvVo(CsConversation c) {
-        return new CsConversationVO(c.getId(), c.getUserId(), c.getStatus(), c.getCreatedAt(), c.getUpdatedAt());
+        String username = null;
+        if (c.getUserId() != null) {
+            // 直查 DB，不走 UserService 多级缓存（缓存条目可能缺少 username 字段）
+            username = userMapper.findUsernameById(c.getUserId());
+        }
+        return new CsConversationVO(c.getId(), c.getUserId(), username, c.getStatus(), c.getCreatedAt(), c.getUpdatedAt());
     }
 
     private List<CsMessageVO> toMsgVoList(List<CsMessage> list) {

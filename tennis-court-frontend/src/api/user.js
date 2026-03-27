@@ -56,3 +56,20 @@ export function addUser(data) {
     data: data
   })
 }
+
+// 删除用户
+export function deleteUser(id) {
+  return request({
+    url: `/users/${id}`,
+    method: 'delete'
+  })
+}
+
+// 批量删除用户
+export function batchDeleteUsers(ids) {
+  return request({
+    url: '/users/batch',
+    method: 'delete',
+    data: ids
+  })
+}
